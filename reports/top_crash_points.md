@@ -1,0 +1,56 @@
+# Top 50 busiest TPS crash points
+
+Distances are to the nearest consolidated intersection and nearest drivable segment (UTM 17N metres). `parking` = inside an OSM off-street parking polygon.
+
+| # | crashes | % severe | % FTR | m to int. | m to road | parking | nearest road (class) | nearest intersection |
+|---:|---:|---:|---:|---:|---:|:---:|---|---|
+| 1 | 2,890 | 16.4 | 6.6 | 101 | 1 |  | Lawrence Avenue East (secondary) | Lawrence Avenue East |
+| 2 | 2,468 | 2.7 | 47.8 | 1 | 1 |  | Highland Hill (residential) | Alcester Court / Highland Hill |
+| 3 | 2,128 | 3.7 | 47.7 | 8 | 4 |  | Borough Drive (secondary) | Borough Drive / Progress Avenue |
+| 4 | 2,124 | 15.2 | 9.0 | 3 | 1 |  | Airley Crescent (residential) | Airley Crescent / Four Oaks Gate |
+| 5 | 1,845 | 16.5 | 12.0 | 0 | 6 |  | Ellesmere Road (secondary) | Ellesmere Road / Kennedy Road |
+| 6 | 1,815 | 5.4 | 38.8 | 14 | 0 |  | Sheppard Avenue East (secondary) | Parkway Forest Drive / Sheppard Avenue East |
+| 7 | 1,791 | 18.6 | 7.4 | 0 | 0 |  | York Mills Road (secondary) | Laurentide Drive / York Mills Road |
+| 8 | 1,738 | 15.6 | 9.3 | 2 | 4 |  | Dufferin Street (secondary) | Dufferin Street / Finch Avenue West |
+| 9 | 1,729 | 14.6 | 10.5 | 8 | 1 |  | Lake Shore Boulevard West (primary) | Jameson Avenue / Lake Shore Boulevard West |
+| 10 | 1,646 | 13.2 | 8.7 | 3 | 1 |  | Jameson Avenue (tertiary) | Jameson Avenue |
+| 11 | 1,614 | 16.5 | 13.1 | 2 | 5 |  | Markham Road (primary) | Ellesmere Road / Markham Road |
+| 12 | 1,533 | 12.9 | 10.9 | 9 | 0 |  | Spadina Avenue (primary) | Lake Shore Boulevard West / Lower Spadina Avenue / Spadina Avenue |
+| 13 | 1,501 | 13.1 | 8.9 | 3 | 2 |  | Ferrand Drive (residential) | Ferrand Drive / Seton Park Road |
+| 14 | 1,486 | 12.4 | 19.7 | 5 | 4 |  | Jane Street (secondary) | Finch Avenue West / Jane Street |
+| 15 | 1,453 | 15.8 | 13.4 | 1 | 5 |  | Sheppard Avenue East (secondary) | Kennedy Road / Sheppard Avenue East |
+| 16 | 1,387 | 11.5 | 14.2 | 6 | 4 |  | Sheppard Avenue East (secondary) | Bayview Avenue / Sheppard Avenue East |
+| 17 | 1,375 | 5.4 | 24.0 | 1 | 0 |  | Warden Avenue (secondary) | Canadian Road / Warden Avenue |
+| 18 | 1,294 | 16.4 | 12.5 | 4 | 5 |  | Kipling Avenue (secondary) | Kipling Avenue / Rexdale Boulevard |
+| 19 | 1,259 | 15.0 | 9.5 | 8 | 0 |  | Warden Avenue (secondary) | Ellesmere Road / Warden Avenue |
+| 20 | 1,258 | 18.8 | 9.9 | 7 | 0 |  | Lawrence Avenue East (secondary) | Kennedy Road / Lawrence Avenue East |
+| 21 | 1,250 | 17.0 | 9.0 | 3 | 4 |  | Progress Avenue (secondary) | Markham Road / Progress Avenue |
+| 22 | 1,248 | 10.7 | 14.2 | 3 | 0 |  | Finch Avenue (secondary) | Finch Avenue / Finch Avenue East / Finch Avenue West / Yonge Street |
+| 23 | 1,247 | 18.2 | 6.8 | 27 | 0 |  | Kipling Avenue (secondary) | Evans Avenue / Kipling Avenue |
+| 24 | 1,208 | 13.1 | 14.4 | 2 | 5 |  | Wilson Avenue (secondary) | Keele Street / Wilson Avenue |
+| 25 | 1,207 | 7.2 | 14.7 | 8 | 0 |  | St. Clair Avenue West (secondary) | Keele Street / St. Clair Avenue West / Weston Road |
+| 26 | 1,201 | 16.0 | 13.0 | 4 | 3 |  | Sheppard Avenue East (secondary) | McCowan Road / Sheppard Avenue East |
+| 27 | 1,193 | 12.2 | 16.9 | 3 | 5 |  | Weston Road (secondary) | Finch Avenue West / Weston Road |
+| 28 | 1,156 | 11.6 | 12.5 | 19 | 0 |  | Lower Jarvis Street (secondary) | Lake Shore Boulevard West / Lower Jarvis Street |
+| 29 | 1,133 | 14.8 | 13.4 | 3 | 3 |  | Victoria Park Avenue (secondary) | Lawrence Avenue East / Victoria Park Avenue |
+| 30 | 1,105 | 15.8 | 10.0 | 2 | 5 |  | Sheppard Avenue East (secondary) | Markham Road / Sheppard Avenue East |
+| 31 | 1,095 | 15.7 | 13.1 | 10 | 2 |  | Eglinton Avenue East (primary) | Eglinton Avenue East / Kennedy Road |
+| 32 | 1,094 | 13.6 | 14.0 | 1 | 6 |  | Warden Avenue (secondary) | Sheppard Avenue East / Warden Avenue |
+| 33 | 1,065 | 18.0 | 11.9 | 5 | 3 |  | Lawrence Avenue East (secondary) | Lawrence Avenue East / Midland Avenue |
+| 34 | 1,053 | 15.0 | 10.2 | 2 | 5 |  | Warden Avenue (secondary) | Lawrence Avenue East / Warden Avenue |
+| 35 | 1,044 | 11.0 | 10.6 | 0 | 6 |  | Yonge Street (primary) | Sheppard Avenue / Sheppard Avenue East / Sheppard Avenue West / Yonge Street |
+| 36 | 1,032 | 13.7 | 15.1 | 13 | 5 |  | Keele Street (secondary) | Keele Street / Lawrence Avenue West |
+| 37 | 1,027 | 12.0 | 29.5 | 1 | 4 |  | Kipling Avenue (secondary) | Finch Avenue West / Kipling Avenue |
+| 38 | 1,019 | 8.3 | 14.8 | 2 | 1 |  | Bay Street (secondary) | Bay Street / Lake Shore Boulevard West |
+| 39 | 1,005 | 16.5 | 8.7 | 10 | 0 |  | Sheppard Avenue East (secondary) | Don Mills Road / Sheppard Avenue East |
+| 40 | 1,004 | 10.2 | 12.5 | 6 | 3 |  | (unnamed) (tertiary) | Arrow Road / Finch Avenue West / Signet Drive |
+| 41 | 1,000 | 13.1 | 14.6 | 1 | 4 |  | Midland Avenue (secondary) | Finch Avenue East / Midland Avenue |
+| 42 | 991 | 15.1 | 15.0 | 2 | 0 |  | Sheppard Avenue East (secondary) | Morningside Avenue / Sheppard Avenue East |
+| 43 | 990 | 9.9 | 13.0 | 2 | 1 |  | Marine Parade Drive (tertiary) | Lake Shore Boulevard West / Marine Parade Drive / Park Lawn Road |
+| 44 | 982 | 9.3 | 23.2 | 4 | 0 |  | Victoria Park Avenue (secondary) | Danforth Avenue / Victoria Park Avenue |
+| 45 | 976 | 12.9 | 12.6 | 4 | 4 |  | Ellesmere Road (secondary) | Ellesmere Road / Parkwoods Village Drive / Victoria Park Avenue |
+| 46 | 969 | 6.9 | 11.6 | 8 | 0 |  | St. Clair Avenue West (secondary) | Bathurst Street / St. Clair Avenue West |
+| 47 | 960 | 12.1 | 17.7 | 8 | 4 |  | Jane Street (secondary) | Jane Street / Wilson Avenue |
+| 48 | 957 | 16.4 | 12.3 | 6 | 2 |  | Ellesmere Road (secondary) | Ellesmere Road / McCowan Road |
+| 49 | 936 | 4.0 | 45.6 | 1 | 0 |  | Sherway Gate (tertiary) | Sherway Gardens Road / Sherway Gate |
+| 50 | 932 | 13.4 | 11.7 | 1 | 5 |  | Birchmount Road (secondary) | Birchmount Road / Ellesmere Road |

@@ -25,6 +25,8 @@ import numpy as np
 import osmnx as ox
 import pandas as pd
 
+from safepath.parking import load_or_fetch_parking
+
 log = logging.getLogger(__name__)
 
 RAW_GRAPH = "toronto_drive.graphml"
@@ -210,3 +212,4 @@ def build_graph(cfg: dict[str, Any]) -> dict[str, Any]:
 
 def run_graph(cfg: dict[str, Any]) -> None:
     build_graph(cfg)
+    load_or_fetch_parking(cfg)
