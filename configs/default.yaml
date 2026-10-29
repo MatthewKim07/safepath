@@ -26,5 +26,12 @@ graph:
   network_type: drive
   crs: EPSG:32617
   # OSMnx buffer radius: intersection nodes within 2x this distance merge into one.
-  consolidation_tolerance_m: 15
+  # 10 m fits TPS points best; 20 m merges distinct intersections (reports/location_analysis.md).
+  consolidation_tolerance_m: 10
   tolerance_candidates_m: [10, 15, 20]
+
+snap:
+  # Chosen from reports/location_analysis.md: crash points sit a median ~2 m from an
+  # intersection; 99% of crashes are within 6.4 m of a drivable edge.
+  intersection_m: 30
+  edge_m: 20
