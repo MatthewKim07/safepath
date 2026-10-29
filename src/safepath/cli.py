@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import argparse
 import logging
+import subprocess
+import sys
 from collections.abc import Callable
+from pathlib import Path
 
 from safepath.config import load_config
 from safepath.data.clean import run_clean
@@ -23,11 +26,12 @@ from safepath.snapping import run_snap
 log = logging.getLogger("safepath")
 
 
-def _not_implemented(step: str) -> Callable[[dict], None]:
-    def run(cfg: dict) -> None:
-        raise SystemExit(f"step '{step}' is not implemented yet")
-
-    return run
+def run_app(cfg: dict) -> None:
+    """Launch the Streamlit app; blocks until the server stops."""
+    script = Path(__file__).parent / "app" / "streamlit_app.py"
+    result = subprocess.run([sys.executable, "-m", "streamlit", "run", str(script)], check=False)
+    if result.returncode != 0:
+        raise RuntimeError(f"streamlit exited with code {result.returncode}")
 
 
 STEPS: dict[str, tuple[str, Callable[[dict], None]]] = {
@@ -43,7 +47,7 @@ STEPS: dict[str, tuple[str, Callable[[dict], None]]] = {
     "evaluate": ("Evaluate models on val 2024 and test 2025", run_evaluate),
     "score": ("Score 2026 risk and write it onto the routing graph", run_score),
     "route": ("Calibrate k and report the routing trade-off", run_routing),
-    "app": ("Launch the Streamlit routing app", _not_implemented("app")),
+    "app": ("Launch the Streamlit routing app", run_app),
 }
 PIPELINE = [
     "download",
