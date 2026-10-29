@@ -29,7 +29,12 @@ log = logging.getLogger("safepath")
 def run_app(cfg: dict) -> None:
     """Launch the Streamlit app; blocks until the server stops."""
     script = Path(__file__).parent / "app" / "streamlit_app.py"
-    result = subprocess.run([sys.executable, "-m", "streamlit", "run", str(script)], check=False)
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "streamlit", "run", str(script)], check=False
+        )
+    except KeyboardInterrupt:  # Ctrl+C stops the server; that is a normal exit
+        return
     if result.returncode != 0:
         raise RuntimeError(f"streamlit exited with code {result.returncode}")
 

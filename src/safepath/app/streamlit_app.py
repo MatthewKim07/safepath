@@ -6,7 +6,7 @@ import folium
 import streamlit as st
 from streamlit_folium import st_folium
 
-from safepath.app.data import build_router, route_latlon, to_wgs84
+from safepath.app.data import RISK_BANDS, build_router, risk_layer, route_latlon, to_wgs84
 from safepath.routing import PRESETS, fastest_route, route_stats, safest_route
 
 MAP_CLICK = "Click on the map"
@@ -20,6 +20,65 @@ st.set_page_config(page_title="SafePath", layout="wide")
 def get_router():
     router = build_router()
     return router, to_wgs84(router.G.graph["crs"])
+
+
+@st.cache_data(show_spinner=False)
+def get_risk_layer():
+    return risk_layer()
+
+
+def add_risk_layer(fmap: folium.Map) -> None:
+    layer = folium.FeatureGroup(name="Top 5% riskiest intersections")
+    for r in get_risk_layer().itertuples():
+        fallback = "yes (proxy, static-only estimate)" if r.is_proxy_fallback else "no"
+        folium.CircleMarker(
+            (r.lat, r.lon),
+            radius=2.5 + 0.35 * r.risk**0.5,
+            color=r.color,
+            weight=1,
+            fill=True,
+            fill_color=r.color,
+            fill_opacity=0.6,
+            tooltip=folium.Tooltip(
+                f"<b>{r.street_names}</b><br>{r.risk:.1f} predicted crashes/yr ({r.band})"
+                f"<br>proxy fallback: {fallback}"
+            ),
+        ).add_to(layer)
+    layer.add_to(fmap)
+
+
+def stats_card(fast, safe, lam: float) -> None:
+    s = route_stats(safe, fast)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Fastest route", f"{fast.minutes:.1f} min")
+    c1.caption(f"{fast.risk:.0f} expected crashes/yr on route · {fast.km:.1f} km")
+    c2.metric(f"Safest route (λ = {lam:g})", f"{safe.minutes:.1f} min")
+    c2.caption(f"{safe.risk:.0f} expected crashes/yr on route · {safe.km:.1f} km")
+    c3.metric("Extra time", f"+{s['extra_minutes']:.1f} min")
+    c3.caption(f"{safe.km - fast.km:+.1f} km vs the fastest route")
+    c4.metric("Expected crashes on route", f"-{s['risk_reduction_pct']:.0f}%")
+    c4.caption(f"{safe.risk - fast.risk:+.0f} crashes/yr at the locations passed")
+
+
+HOW_IT_WORKS = """
+**Risk model.** Toronto Police collision records (2014-2025) are snapped to OpenStreetMap
+intersections. A LightGBM Poisson model predicts each intersection's 2026 crash count from its
+last three years of crashes and its road features (approach classes, legs, signals, transit,
+nearby activity). Intersections whose recorded crashes really belong to a mall parking lot or
+an expressway use a features-only estimate instead. Road segments carry a per-km rate by road
+class; motorways get a base rate estimated from expressway crashes.
+
+**Routing.** Each road edge costs `travel time + λ · k · risk`, where risk is expected crashes
+per year at the intersection the edge enters plus along the segment. `k` is set so that at
+λ = 1 a typical route's risk weighs as much as its travel time. λ = 0 is the fastest route.
+
+**Limitations.** Risk is where crashes happen, not a per-vehicle rate: there is no traffic
+volume term yet, so busy roads look risky partly because they are busy. Most 400-series
+highways (401, 427, 400, 404) are patrolled by the OPP, not Toronto Police, so their crashes
+are undercounted and safer routes lean on them; safer routes also cut through residential
+streets. Travel times are free-flow. Locations are police-reported and intersection-snapped,
+and road features describe today's OpenStreetMap, not past years.
+"""
 
 
 def _param(name: str, default: str) -> str:
@@ -64,7 +123,18 @@ def main() -> None:
         "its travel time.",
     )
 
+    show_risk = st.sidebar.toggle(
+        "Show top 5% riskiest intersections", value=_param("risk", "1") == "1"
+    )
+    if show_risk:
+        st.sidebar.markdown(
+            " ".join(f"<span style='color:{c}'>●</span> {label}" for _, label, c in RISK_BANDS),
+            unsafe_allow_html=True,
+        )
+
     fmap = folium.Map(location=TORONTO, zoom_start=11, tiles="OpenStreetMap")
+    if show_risk:
+        add_risk_layer(fmap)
     routes = None
     if o and d:
         on, dn = router.nearest_node(*o), router.nearest_node(*d)
@@ -107,15 +177,11 @@ def main() -> None:
             st.rerun()
 
     if routes:
-        fast, safe = routes
-        s = route_stats(safe, fast)
-        st.write(
-            f"Fastest route: {fast.minutes:.1f} min, {fast.risk:.0f} expected crashes/yr on route. "
-            f"Safest: {safe.minutes:.1f} min, {safe.risk:.0f}. "
-            f"+{s['extra_minutes']:.1f} min, -{s['risk_reduction_pct']:.0f}% expected crashes."
-        )
+        stats_card(*routes, lam)
     else:
         st.info("Pick an origin and destination, or click the map twice.")
+    with st.expander("How it works / limitations"):
+        st.markdown(HOW_IT_WORKS)
 
 
 main()
