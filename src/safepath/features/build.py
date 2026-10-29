@@ -12,13 +12,15 @@ import pandas as pd
 from safepath.features.labels import build_labels, label_summary, load_assignments
 from safepath.features.proxies import EXPRESSWAY, RETAIL, distances, flag_proxies, train_stats
 from safepath.features.roads import approaches, class_combo
+from safepath.features.static import static_features
 from safepath.graph import INTERSECTIONS, NODE_MAP, SEGMENTS
 from safepath.locations import MOTORWAY_CLASSES, markdown_table
-from safepath.osm_context import load_or_fetch_layer
+from safepath.osm_context import fetch_all, load_or_fetch_layer
 
 log = logging.getLogger(__name__)
 
 PROXIES = "intersection_proxies.parquet"
+STATIC = "static_features.parquet"
 
 
 def compute_proxies(cfg: dict[str, Any]) -> pd.DataFrame:
@@ -177,5 +179,59 @@ def run_labels(cfg: dict[str, Any]) -> pd.DataFrame:
     return labels
 
 
+def coverage_table(features: pd.DataFrame) -> pd.DataFrame:
+    """One row per feature: type, how often it is non-zero / true, and its spread."""
+    rows = []
+    for col in features.columns:
+        s = features[col]
+        numeric = pd.api.types.is_numeric_dtype(s) and not pd.api.types.is_bool_dtype(s)
+        rows.append(
+            {
+                "feature": col,
+                "type": "category"
+                if not numeric and not pd.api.types.is_bool_dtype(s)
+                else ("bool" if pd.api.types.is_bool_dtype(s) else "numeric"),
+                "% NaN": 100 * s.isna().mean(),
+                "% non-zero / true": 100 * (s.astype(bool) if not numeric else s.ne(0)).mean()
+                if pd.api.types.is_bool_dtype(s) or numeric
+                else float("nan"),
+                "median": float(s.median()) if numeric else float("nan"),
+                "p99": float(s.quantile(0.99)) if numeric else float("nan"),
+                "levels": int(s.nunique()) if not numeric else 0,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def build_static(cfg: dict[str, Any]) -> pd.DataFrame:
+    processed = Path(cfg["paths"]["processed_dir"])
+    features = static_features(
+        gpd.read_parquet(processed / INTERSECTIONS),
+        gpd.read_parquet(processed / SEGMENTS),
+        pd.read_parquet(processed / NODE_MAP),
+        fetch_all(cfg),
+    )
+    if features.drop(columns="class_combo").isna().any().any():
+        raise ValueError("static features contain unhandled NaNs")
+    features.to_parquet(processed / STATIC)
+    cov = coverage_table(features)
+    lines = [
+        "# Static intersection features",
+        "",
+        f"{len(features):,} intersections x {features.shape[1]} features, from the current OSM "
+        "snapshot (so they describe today's roads, not the roads in each label year). No raw "
+        "coordinates or neighbourhood IDs. Missing maxspeed / lanes on an approach are "
+        "imputed with the median for its road class; `maxspeed_missing` / `lanes_missing` "
+        "mark intersections where no approach carried the tag. Unhandled NaNs: 0.",
+        "",
+        markdown_table(cov),
+        "",
+    ]
+    (Path(cfg["paths"]["reports_dir"]) / "features.md").write_text("\n".join(lines))
+    log.info("static features: %d x %d", *features.shape)
+    return features
+
+
 def run_features(cfg: dict[str, Any]) -> None:
     run_labels(cfg)
+    build_static(cfg)
