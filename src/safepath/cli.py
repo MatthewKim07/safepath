@@ -9,6 +9,7 @@ from collections.abc import Callable
 from safepath.config import load_config
 from safepath.data.clean import run_clean
 from safepath.data.download import download_collisions
+from safepath.data.report import run_report
 
 
 def _not_implemented(step: str) -> Callable[[dict], None]:
@@ -21,7 +22,7 @@ def _not_implemented(step: str) -> Callable[[dict], None]:
 STEPS: dict[str, tuple[str, Callable[[dict], None]]] = {
     "download": ("Download Toronto collision records", download_collisions),
     "clean": ("Clean, deduplicate, and filter collisions", run_clean),
-    "report-data": ("Write the collision data report", _not_implemented("report-data")),
+    "report-data": ("Write the collision data report", run_report),
     "graph": ("Build the OSM road graph", _not_implemented("graph")),
     "snap": ("Snap collisions to road segments", _not_implemented("snap")),
     "features": ("Build segment-year features and labels", _not_implemented("features")),
@@ -29,7 +30,7 @@ STEPS: dict[str, tuple[str, Callable[[dict], None]]] = {
     "evaluate": ("Evaluate models on val and test years", _not_implemented("evaluate")),
     "app": ("Launch the Streamlit routing app", _not_implemented("app")),
 }
-PIPELINE = ["download", "clean", "graph", "snap", "features", "train", "evaluate"]
+PIPELINE = ["download", "clean", "report-data", "graph", "snap", "features", "train", "evaluate"]
 
 
 def build_parser() -> argparse.ArgumentParser:
