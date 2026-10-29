@@ -20,3 +20,11 @@ clean:
     max_lon: -79.10
     min_lat: 43.57
     max_lat: 43.87
+
+graph:
+  place: Toronto, Ontario, Canada
+  network_type: drive
+  crs: EPSG:32617
+  # OSMnx buffer radius: intersection nodes within 2x this distance merge into one.
+  consolidation_tolerance_m: 15
+  tolerance_candidates_m: [10, 15, 20]

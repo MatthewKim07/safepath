@@ -10,6 +10,7 @@ from safepath.config import load_config
 from safepath.data.clean import run_clean
 from safepath.data.download import download_collisions
 from safepath.data.report import run_report
+from safepath.graph import run_graph
 
 
 def _not_implemented(step: str) -> Callable[[dict], None]:
@@ -23,7 +24,7 @@ STEPS: dict[str, tuple[str, Callable[[dict], None]]] = {
     "download": ("Download Toronto collision records", download_collisions),
     "clean": ("Clean, deduplicate, and filter collisions", run_clean),
     "report-data": ("Write the collision data report", run_report),
-    "graph": ("Build the OSM road graph", _not_implemented("graph")),
+    "graph": ("Build the OSM road graph and consolidated intersections", run_graph),
     "snap": ("Snap collisions to road segments", _not_implemented("snap")),
     "features": ("Build segment-year features and labels", _not_implemented("features")),
     "train": ("Train baselines and the risk model", _not_implemented("train")),
