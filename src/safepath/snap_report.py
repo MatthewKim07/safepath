@@ -51,12 +51,12 @@ def intersection_stats(
     out["flag_retail_proxy"] = busy & (out["pct_severe"] < 6) & (out["pct_ftr"] > 20)
     # Expressway proxy: busy minor-road intersection within 300 m of a motorway.
     out["flag_expressway_proxy"] = busy & out["minor_roads_only"] & (out["dist_motorway"] <= 300)
-    return out.sort_values("crashes", ascending=False)
+    return out.sort_index().sort_values("crashes", ascending=False, kind="stable")
 
 
 def plot_intersection_map(stats: gpd.GeoDataFrame, segments: gpd.GeoDataFrame, path: Path) -> None:
     cmap = LinearSegmentedColormap.from_list("seq_blue", SEQ_BLUE)
-    hit = stats[stats["crashes"] > 0].sort_values("crashes")
+    hit = stats[stats["crashes"] > 0].sort_index().sort_values("crashes", kind="stable")
     fig, ax = plt.subplots(figsize=(11, 7.5), facecolor=SURFACE, layout="constrained")
     ax.set_facecolor(SURFACE)
     segments.plot(ax=ax, color="#d9d8d1", linewidth=0.2)

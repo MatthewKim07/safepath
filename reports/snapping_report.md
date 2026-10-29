@@ -90,7 +90,7 @@ Rank of the first intersection whose street names contain each arterial.
 | Dundas | 86 | 1 | 14 | 242 |
 | Eglinton | 28 | 9 | 39 | 254 |
 | Finch | 8 | 12 | 42 | 239 |
-| Steeles | 117 | 0 | 4 | 217 |
+| Steeles | 116 | 0 | 4 | 217 |
 | Sheppard | 6 | 16 | 31 | 206 |
 | Lawrence | 15 | 12 | 33 | 288 |
 
