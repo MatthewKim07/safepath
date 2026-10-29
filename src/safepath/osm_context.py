@@ -13,7 +13,7 @@ from typing import Any
 import geopandas as gpd
 import osmnx as ox
 
-from safepath.graph import configure_osmnx
+from safepath.fetch import configure_osmnx, fetch_settings, require_rows, with_retries
 
 log = logging.getLogger(__name__)
 
@@ -83,8 +83,13 @@ def load_or_fetch_layer(cfg: dict[str, Any], name: str) -> gpd.GeoDataFrame:
     if path.exists():
         return gpd.read_parquet(path)
     configure_osmnx(cfg)
-    raw = ox.features_from_place(cfg["graph"]["place"], tags=LAYERS[name])
-    layer = _filter(name, raw.to_crs(cfg["graph"]["crs"]))
+    raw = with_retries(
+        lambda: ox.features_from_place(cfg["graph"]["place"], tags=LAYERS[name]),
+        what=f"OSM fetch of layer '{name}'",
+        **fetch_settings(cfg),
+    )
+    require_rows(raw, f"OSM layer '{name}'")
+    layer = require_rows(_filter(name, raw.to_crs(cfg["graph"]["crs"])), f"filtered '{name}'")
     layer.to_parquet(path)
     log.info("osm layer %s: kept %d of %d features", name, len(layer), len(raw))
     return layer

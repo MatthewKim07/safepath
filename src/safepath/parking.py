@@ -9,6 +9,8 @@ from typing import Any
 import geopandas as gpd
 import osmnx as ox
 
+from safepath.fetch import configure_osmnx, fetch_settings, require_rows, with_retries
+
 log = logging.getLogger(__name__)
 
 PARKING = "parking.parquet"
@@ -35,8 +37,13 @@ def load_or_fetch_parking(cfg: dict[str, Any]) -> gpd.GeoDataFrame:
     path = Path(cfg["paths"]["processed_dir"]) / PARKING
     if path.exists():
         return gpd.read_parquet(path)
-    raw = ox.features_from_place(cfg["graph"]["place"], tags=PARKING_TAGS)
-    parking = filter_parking(raw).to_crs(cfg["graph"]["crs"])
+    configure_osmnx(cfg)
+    raw = with_retries(
+        lambda: ox.features_from_place(cfg["graph"]["place"], tags=PARKING_TAGS),
+        what="OSM fetch of parking polygons",
+        **fetch_settings(cfg),
+    )
+    parking = require_rows(filter_parking(raw), "OSM parking polygons").to_crs(cfg["graph"]["crs"])
     parking["area_m2"] = parking.area
     parking.to_parquet(path)
     log.info("kept %d of %d parking features as off-street polygons", len(parking), len(raw))

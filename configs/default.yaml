@@ -22,6 +22,11 @@ clean:
     min_lat: 43.57
     max_lat: 43.87
 
+osm:
+  # Overpass is rate-limited; failed fetches are retried, then the step fails loudly.
+  fetch_attempts: 3
+  backoff_seconds: 15
+
 graph:
   place: Toronto, Ontario, Canada
   network_type: drive

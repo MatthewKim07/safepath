@@ -18,6 +18,8 @@ from safepath.models.train import run_train
 from safepath.snap_report import run_snap_report
 from safepath.snapping import run_snap
 
+log = logging.getLogger("safepath")
+
 
 def _not_implemented(step: str) -> Callable[[dict], None]:
     def run(cfg: dict) -> None:
@@ -69,5 +71,11 @@ def main(argv: list[str] | None = None) -> int:
     cfg = load_config(args.config)
     steps = PIPELINE if args.step == "all" else [args.step]
     for step in steps:
-        STEPS[step][1](cfg)
+        log.info("running step '%s'", step)
+        try:
+            STEPS[step][1](cfg)
+        except Exception:
+            # Stop the pipeline at the first failure; later steps must not run on stale inputs.
+            log.exception("step '%s' failed; stopping", step)
+            return 1
     return 0

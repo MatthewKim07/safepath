@@ -25,6 +25,7 @@ import numpy as np
 import osmnx as ox
 import pandas as pd
 
+from safepath.fetch import configure_osmnx, fetch_settings, require_rows, with_retries
 from safepath.parking import load_or_fetch_parking
 
 log = logging.getLogger(__name__)
@@ -37,12 +38,6 @@ NODE_MAP = "node_to_intersection.parquet"
 SEGMENTS = "segments.parquet"
 EDGE_MAP = "edge_to_segment.parquet"
 GRAPH_STATS = "graph_stats.json"
-
-
-def configure_osmnx(cfg: dict[str, Any]) -> None:
-    ox.settings.cache_folder = str(Path(cfg["paths"]["raw_dir"]) / "osmnx_cache")
-    ox.settings.use_cache = True
-    ox.settings.log_console = False
 
 
 def _tag(value: Any) -> str | None:
@@ -73,7 +68,12 @@ def load_or_build_projected(cfg: dict[str, Any]) -> nx.MultiDiGraph:
     else:
         g = cfg["graph"]
         t0 = time.time()
-        G = download_graph(g["place"], g["network_type"])
+        G = with_retries(
+            lambda: download_graph(g["place"], g["network_type"]),
+            what="OSM drive graph download",
+            **fetch_settings(cfg),
+        )
+        require_rows(G.nodes, "OSM drive graph")
         log.info("downloaded graph in %.0fs", time.time() - t0)
         ox.save_graphml(G, raw_path)
     Gp = ox.project_graph(G, to_crs=cfg["graph"]["crs"])
