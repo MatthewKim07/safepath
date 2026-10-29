@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
@@ -44,6 +45,7 @@ def models_dir(cfg: dict[str, Any]) -> Path:
 
 
 SPATIAL_OOF = "static_only_spatial_oof.parquet"
+STATIC_DEPLOY = "lgbm_static_deploy.txt"
 BLOCK_M = 2000
 N_FOLDS = 5
 
@@ -66,21 +68,23 @@ def spatial_folds(
 
 def spatial_holdout_static(
     clean: pd.DataFrame, params: dict[str, Any], cats: dict[str, list]
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, list[int]]:
     """Out-of-fold static-only predictions for val/test rows: each fold's model never saw
-    those intersections, so this measures transfer to intersections with no crash record."""
+    those intersections, so this measures transfer to intersections with no crash record.
+    Also returns each fold's early-stopping round count."""
     folds = spatial_folds(clean)
     features = lgbm.FEATURE_SETS["static_only"]
-    parts = []
+    parts, iterations = [], []
     for k in range(N_FOLDS):
         inside = folds == k
         # early-stop on a different set of unseen blocks, so the held-out fold stays untouched
         stop = folds == (k + 1) % N_FOLDS
         tr = clean[~inside & ~stop & (clean["split"] == "train")]
         va = clean[stop & (clean["split"] == "val")]
-        booster, _ = lgbm.fit(
+        booster, info = lgbm.fit(
             tr, va, features, "crash_count", cats, grid={key: [v] for key, v in params.items()}
         )
+        iterations.append(info["best_iteration"])
         held = clean[inside & clean["split"].isin(["val", "test"])]
         parts.append(
             pd.DataFrame(
@@ -92,7 +96,23 @@ def spatial_holdout_static(
                 }
             )
         )
-    return pd.concat(parts, ignore_index=True)
+    return pd.concat(parts, ignore_index=True), iterations
+
+
+def fit_static_deploy(
+    clean: pd.DataFrame, params: dict[str, Any], rounds: int, cats: dict[str, list]
+) -> lgb.Booster:
+    """Static-only model on every clean label year (2016-2019, 2022-2025), for intersections
+    whose own counts cannot be trusted. Its round count comes from the spatial holdout, i.e.
+    the setting where the model has not seen the intersection, which is the deployment case."""
+    rows = clean[clean["split"] != "history"]
+    features = lgbm.FEATURE_SETS["static_only"]
+    data = lgb.Dataset(
+        lgbm.prepare(rows, features, cats),
+        rows["crash_count"],
+        categorical_feature=lgbm.CATEGORICAL,
+    )
+    return lgb.train({**lgbm.BASE_PARAMS, **params}, data, num_boost_round=rounds)
 
 
 def run_train(cfg: dict[str, Any]) -> dict[str, Any]:
@@ -117,9 +137,22 @@ def run_train(cfg: dict[str, Any]) -> dict[str, Any]:
             "n_features": len(features),
             **info,
         }
-    oof = spatial_holdout_static(clean, summary["models"]["lgbm_static_only"]["best_params"], cats)
+    static_params = summary["models"]["lgbm_static_only"]["best_params"]
+    oof, iterations = spatial_holdout_static(clean, static_params, cats)
     oof.to_parquet(out / SPATIAL_OOF, index=False)
-    summary["spatial_holdout"] = {"block_m": BLOCK_M, "n_folds": N_FOLDS, "rows": len(oof)}
+    rounds = int(np.median(iterations))
+    fit_static_deploy(clean, static_params, rounds, cats).save_model(out / STATIC_DEPLOY)
+    summary["spatial_holdout"] = {
+        "block_m": BLOCK_M,
+        "n_folds": N_FOLDS,
+        "rows": len(oof),
+        "best_iterations": iterations,
+    }
+    summary["static_deploy"] = {
+        "rounds": rounds,
+        "params": static_params,
+        "label_years": "all clean train/val/test years",
+    }
     (out / "training_summary.json").write_text(json.dumps(summary, indent=2))
     log.info("trained %d models on %d rows", len(MODELS), len(train))
     return summary

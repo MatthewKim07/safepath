@@ -734,7 +734,7 @@
             "num_leaves": 15,
             "min_data_in_leaf": 50,
             "best_iteration": 2999,
-            "val_poisson": -3.2776272114131437
+            "val_poisson": -3.277627211413144
           },
           {
             "num_leaves": 15,
@@ -876,7 +876,22 @@
     "spatial_holdout": {
       "block_m": 2000,
       "n_folds": 5,
-      "rows": 44808
+      "rows": 44808,
+      "best_iterations": [
+        151,
+        200,
+        158,
+        239,
+        201
+      ]
+    },
+    "static_deploy": {
+      "rounds": 200,
+      "params": {
+        "num_leaves": 63,
+        "min_data_in_leaf": 50
+      },
+      "label_years": "all clean train/val/test years"
     }
   }
 }
