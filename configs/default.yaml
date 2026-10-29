@@ -35,3 +35,21 @@ snap:
   # intersection; 99% of crashes are within 6.4 m of a drivable edge.
   intersection_m: 30
   edge_m: 20
+
+splits:
+  train: [2016, 2017, 2018, 2019, 2022, 2023]
+  val: [2024]
+  test: [2025]
+  # 2014-2015 and 2020-2021 are history only; 2026 is partial and dropped.
+
+proxies:
+  # Computed from train label years only. Tuning notes in reports/labels.md.
+  retail:
+    min_train_crashes: 150
+    max_severe_share: 0.08
+    min_ftr_share: 0.25
+    max_dist_retail_m: 150
+  expressway:
+    max_dist_motorway_m: 200
+    min_train_crashes: 150
+    min_ratio_to_combo_median: 20

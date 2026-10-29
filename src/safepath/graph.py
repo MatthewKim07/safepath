@@ -146,7 +146,7 @@ def segment_frames(Gp: nx.MultiDiGraph) -> tuple[gpd.GeoDataFrame, pd.DataFrame]
     edge_map = edges[["u", "v", "key", "segment_id"]].copy()
     first = edges.sort_values(["segment_id", "u"]).drop_duplicates("segment_id")
     seg = first[["segment_id", "u", "v", "key", "length", "geometry"]].copy()
-    for col in ("highway", "name", "oneway", "maxspeed", "lanes", "speed_kph"):
+    for col in ("highway", "name", "oneway", "maxspeed", "lanes", "speed_kph", "bridge", "tunnel"):
         values = first[col] if col in first else pd.Series(None, index=first.index)
         seg[col] = values.map(_tag)
     seg["n_directed_edges"] = seg["segment_id"].map(edge_map.groupby("segment_id").size())

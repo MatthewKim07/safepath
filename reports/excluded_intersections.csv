@@ -1,0 +1,32 @@
+intersection_id,street_names,exclusion_reason,train_crashes,train_severe_share,train_ftr_share,dist_retail,dist_motorway,class_combo,ratio_to_combo_median
+12553,Alcester Court / Highland Hill,retail_proxy,1250,0.025,0.446,52.226,278.836,local x local,416.667
+3835,Borough Drive / Progress Avenue,retail_proxy,1148,0.038,0.469,20.23,283.192,arterial x arterial,6.958
+8146,Airley Crescent / Four Oaks Gate,expressway_proxy,1060,0.156,0.092,1078.133,172.699,local x local,353.333
+27,Parkway Forest Drive / Sheppard Avenue East,retail_proxy,947,0.053,0.379,6.847,207.937,arterial x local,49.842
+13619,Laurentide Drive / York Mills Road,expressway_proxy,869,0.191,0.069,907.818,55.56,arterial x local,45.737
+8037,Ferrand Drive / Seton Park Road,expressway_proxy,771,0.134,0.08,362.249,122.428,local x local,257.0
+16193,Sherway Gardens Road / Sherway Gate,retail_proxy,495,0.042,0.434,7.289,175.029,collector x collector,33.0
+3832,Eglinton Avenue East / Hakimi Avenue / Lebovic Avenue,retail_proxy,425,0.035,0.407,19.335,2897.93,arterial x collector,6.071
+8043,Concorde Place / Wynford Drive / Wynford Heights Crescent,expressway_proxy,390,0.203,0.085,837.226,141.017,collector x local,78.0
+3911,Antrim Crescent / Kennedy Road,expressway_proxy,384,0.083,0.253,21.346,162.135,arterial x local,20.211
+8745,Daphne Road / Greencedar Circuit,retail_proxy,365,0.058,0.397,0.0,2910.19,collector x local,73.0
+6085,Abitibi Avenue / Yonge Street,retail_proxy,322,0.068,0.357,15.475,4306.555,arterial x local,16.947
+8603,Archer Street / Cobourg Avenue,retail_proxy,311,0.048,0.421,53.131,2077.724,local x local,103.667
+17455,Scarsdale Road / York Mills Road,retail_proxy,289,0.062,0.311,16.923,1195.7,arterial x local,15.211
+14515,Brimwood Boulevard / Sandhurst Circle,retail_proxy,283,0.074,0.357,17.913,3358.519,collector x collector,18.867
+14749,Beverly Glen Boulevard / Bridletowne Circle,retail_proxy,274,0.051,0.38,13.606,1770.742,collector x collector,18.267
+12037,Esther Shiner Boulevard / Provost Drive,retail_proxy,252,0.04,0.345,16.536,235.779,collector x local,50.4
+52,Highway 401 Express,expressway_proxy,233,0.21,0.082,784.957,0.0,highway x highway,22.19
+7795,Don Mills Road / Skymark Drive,retail_proxy,226,0.022,0.345,27.456,589.656,arterial x local,11.895
+676,Queen Elizabeth Boulevard / Taymall Avenue,expressway_proxy,221,0.045,0.235,17.308,33.154,local x local,73.667
+2811,Blossomfield Drive / Dane Avenue,retail_proxy,211,0.028,0.389,4.707,294.987,local x local,70.333
+5883,Index Road / North Queen Street / Service Road,retail_proxy,192,0.047,0.318,15.566,21.512,arterial x local,10.105
+21892,Karl Fraser Road / Lawrence Avenue East,retail_proxy,181,0.055,0.381,14.47,881.955,arterial x local,9.526
+11458,Elkhorn Drive / Hawksbury Drive,retail_proxy,180,0.044,0.322,7.63,605.081,local x local,60.0
+18449,Blackwell Avenue / Tapscott Road,retail_proxy,173,0.046,0.399,12.339,1223.285,collector x collector,11.533
+17201,Finch Avenue West / San Romanoway,retail_proxy,172,0.052,0.349,29.058,994.725,arterial x local,9.053
+17186,Jane Street / San Romanoway,retail_proxy,168,0.077,0.411,16.687,846.504,arterial x local,8.842
+10728,Lynnford Drive / The East Mall,retail_proxy,168,0.03,0.333,16.516,218.122,arterial x local,8.842
+17445,Bamburgh Circle / Wintermute Boulevard,retail_proxy,159,0.05,0.352,17.994,2061.215,collector x collector,10.6
+7781,Don Mills Road East,retail_proxy,151,0.046,0.258,9.766,805.6,arterial x arterial,0.915
+22073,Eastwick Road / Oxford Street,expressway_proxy,151,0.113,0.238,101.109,23.866,local x local,50.333
