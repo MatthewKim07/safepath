@@ -4,6 +4,7 @@ paths:
   processed_dir: data/processed
   reports_dir: reports
   figures_dir: reports/figures
+  models_dir: models
 
 download:
   url: https://services.arcgis.com/S9th0jAJ7bqgIRjw/ArcGIS/rest/services/Traffic_Collisions_Open_Data/FeatureServer/0/query

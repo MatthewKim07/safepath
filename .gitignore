@@ -227,7 +227,7 @@ data/processed/
 *.parquet
 *.graphml
 cache/
-models/
+/models/
 .env
 wandb/
 .ipynb_checkpoints/

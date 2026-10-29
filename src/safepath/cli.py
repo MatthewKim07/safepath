@@ -13,6 +13,7 @@ from safepath.data.report import run_report
 from safepath.features.build import run_features
 from safepath.graph import run_graph
 from safepath.locations import run_locations
+from safepath.models.train import run_train
 from safepath.snap_report import run_snap_report
 from safepath.snapping import run_snap
 
@@ -33,8 +34,8 @@ STEPS: dict[str, tuple[str, Callable[[dict], None]]] = {
     "snap": ("Assign collisions to intersections or mid-block segments", run_snap),
     "report-snap": ("Write the snapping report", run_snap_report),
     "features": ("Build intersection-year labels and features", run_features),
-    "train": ("Train baselines and the risk model", _not_implemented("train")),
-    "evaluate": ("Evaluate models on val and test years", _not_implemented("evaluate")),
+    "train": ("Fit baselines and LightGBM risk models", run_train),
+    "evaluate": ("Evaluate models on val 2024 and test 2025", _not_implemented("evaluate")),
     "app": ("Launch the Streamlit routing app", _not_implemented("app")),
 }
 PIPELINE = [
