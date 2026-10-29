@@ -307,7 +307,7 @@ def write_top_points_report(top: pd.DataFrame, path: Path) -> None:
     path.write_text("\n".join(lines) + "\n")
 
 
-def _fmt_table(df: pd.DataFrame, floats: str = "{:.1f}") -> str:
+def markdown_table(df: pd.DataFrame, floats: str = "{:.1f}") -> str:
     def fmt(v: Any) -> str:
         if isinstance(v, float | np.floating):
             return floats.format(v)
@@ -355,7 +355,9 @@ def write_location_report(
         "",
         "## Where crash points sit",
         "",
-        _fmt_table(summary.rename(columns={"pct_crashes": "% crashes", "pct_points": "% points"})),
+        markdown_table(
+            summary.rename(columns={"pct_crashes": "% crashes", "pct_points": "% points"})
+        ),
         "",
         "## Reading",
         "",
@@ -377,7 +379,7 @@ def write_location_report(
         "OSMnx buffers every intersection node by the tolerance and merges overlaps, so the "
         "effective merge distance is twice the tolerance.",
         "",
-        _fmt_table(tol),
+        markdown_table(tol),
         "",
         f"Chosen: {chosen} m. A larger tolerance moves cluster centroids away from where TPS "
         "places crashes (crashes within 10 m fall as tolerance grows) and folds more distinct "

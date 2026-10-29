@@ -12,6 +12,7 @@ from safepath.data.download import download_collisions
 from safepath.data.report import run_report
 from safepath.graph import run_graph
 from safepath.locations import run_locations
+from safepath.snap_report import run_snap_report
 from safepath.snapping import run_snap
 
 
@@ -29,6 +30,7 @@ STEPS: dict[str, tuple[str, Callable[[dict], None]]] = {
     "graph": ("Build the OSM road graph and consolidated intersections", run_graph),
     "locations": ("Analyse crash points against intersections, roads, and parking", run_locations),
     "snap": ("Assign collisions to intersections or mid-block segments", run_snap),
+    "report-snap": ("Write the snapping report", run_snap_report),
     "features": ("Build segment-year features and labels", _not_implemented("features")),
     "train": ("Train baselines and the risk model", _not_implemented("train")),
     "evaluate": ("Evaluate models on val and test years", _not_implemented("evaluate")),
@@ -41,6 +43,7 @@ PIPELINE = [
     "graph",
     "locations",
     "snap",
+    "report-snap",
     "features",
     "train",
     "evaluate",
