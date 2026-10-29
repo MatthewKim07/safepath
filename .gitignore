@@ -218,3 +218,17 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# SafePath project
+CLAUDE.md
+.claude/
+data/raw/
+data/processed/
+*.parquet
+*.graphml
+cache/
+models/
+.env
+wandb/
+.ipynb_checkpoints/
+reports/cache/
