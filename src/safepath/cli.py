@@ -7,6 +7,7 @@ import logging
 from collections.abc import Callable
 
 from safepath.config import load_config
+from safepath.data.download import download_collisions
 
 
 def _not_implemented(step: str) -> Callable[[dict], None]:
@@ -17,7 +18,7 @@ def _not_implemented(step: str) -> Callable[[dict], None]:
 
 
 STEPS: dict[str, tuple[str, Callable[[dict], None]]] = {
-    "download": ("Download Toronto collision records", _not_implemented("download")),
+    "download": ("Download Toronto collision records", download_collisions),
     "report-data": ("Write the collision data report", _not_implemented("report-data")),
     "graph": ("Build the OSM road graph", _not_implemented("graph")),
     "snap": ("Snap collisions to road segments", _not_implemented("snap")),

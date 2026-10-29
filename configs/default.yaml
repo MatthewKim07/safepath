@@ -11,6 +11,7 @@ download:
   timeout_seconds: 60
   max_retries: 6
   backoff_seconds: 2.0
+  workers: 4
 
 clean:
   # Generous box around the City of Toronto; anything outside is treated as bad geocoding.
