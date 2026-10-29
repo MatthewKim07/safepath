@@ -1,0 +1,21 @@
+paths:
+  raw_dir: data/raw
+  page_cache_dir: data/raw/pages
+  processed_dir: data/processed
+  reports_dir: reports
+  figures_dir: reports/figures
+
+download:
+  url: https://services.arcgis.com/S9th0jAJ7bqgIRjw/ArcGIS/rest/services/Traffic_Collisions_Open_Data/FeatureServer/0/query
+  page_size: 2000
+  timeout_seconds: 60
+  max_retries: 6
+  backoff_seconds: 2.0
+
+clean:
+  # Generous box around the City of Toronto; anything outside is treated as bad geocoding.
+  bbox:
+    min_lon: -79.65
+    max_lon: -79.10
+    min_lat: 43.57
+    max_lat: 43.87
