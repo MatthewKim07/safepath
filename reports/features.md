@@ -31,3 +31,26 @@
 | dist_motorway_m | numeric | 0.0 | 96.4 | 1577.7 | 5752.6 | 0 |
 | dist_retail_m | numeric | 0.0 | 99.3 | 609.4 | 2044.1 | 0 |
 | dist_nearest_intersection_m | numeric | 0.0 | 100.0 | 80.6 | 219.4 | 0 |
+
+# History features
+
+Built per label year Y from years strictly before Y (see `features/history.py` and the leakage test in `tests/test_history.py`): prev1 and prev3-mean crash and severe counts, the same as shares of the citywide intersection total of those years, years since the last crash (capped at 3), and `covid_in_window` when Y-3..Y-1 touches 2020-2021. Label year 2016 only has 2014-2015 behind it, so its prev3 mean is over two years (`n_history_years`).
+
+## Drift check (clean intersections)
+
+| split | rows | mean_label | mean_prev1 | mean_prev3 | mean_prev1_share_x1e4 | covid_window_rows |
+|---|---:|---:|---:|---:|---:|---:|
+| train | 134,424 | 2.5 | 2.3 | 2.2 | 0.4 | 0.3 |
+| val | 22,404 | 2.4 | 2.4 | 2.0 | 0.4 | 1.0 |
+| test | 22,404 | 2.4 | 2.4 | 2.3 | 0.4 | 0.0 |
+
+| year | mean_label | mean_prev1 | mean_prev3 |
+|---|---:|---:|---:|
+| 2016 | 2.6 | 2.4 | 2.3 |
+| 2017 | 2.7 | 2.6 | 2.4 |
+| 2018 | 2.7 | 2.7 | 2.6 |
+| 2019 | 2.7 | 2.7 | 2.6 |
+| 2022 | 2.0 | 1.5 | 1.9 |
+| 2023 | 2.4 | 2.0 | 1.7 |
+| 2024 | 2.4 | 2.4 | 2.0 |
+| 2025 | 2.4 | 2.4 | 2.3 |

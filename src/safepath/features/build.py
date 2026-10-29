@@ -9,6 +9,7 @@ from typing import Any
 import geopandas as gpd
 import pandas as pd
 
+from safepath.features.history import history_features
 from safepath.features.labels import build_labels, label_summary, load_assignments
 from safepath.features.proxies import EXPRESSWAY, RETAIL, distances, flag_proxies, train_stats
 from safepath.features.roads import approaches, class_combo
@@ -21,6 +22,7 @@ log = logging.getLogger(__name__)
 
 PROXIES = "intersection_proxies.parquet"
 STATIC = "static_features.parquet"
+MODEL_TABLE = "model_table.parquet"
 
 
 def compute_proxies(cfg: dict[str, Any]) -> pd.DataFrame:
@@ -232,6 +234,67 @@ def build_static(cfg: dict[str, Any]) -> pd.DataFrame:
     return features
 
 
+def build_model_table(
+    cfg: dict[str, Any], labels: pd.DataFrame, static: pd.DataFrame
+) -> pd.DataFrame:
+    """Label rows for train / val / test years joined with history and static features."""
+    splits = cfg["splits"]
+    label_years = sorted(splits["train"] + splits["val"] + splits["test"])
+    history = history_features(labels, label_years)
+    table = (
+        labels[labels["year"].isin(label_years)]
+        .merge(history, on=["intersection_id", "year"], how="left", validate="one_to_one")
+        .merge(static, left_on="intersection_id", right_index=True, how="left")
+    )
+    if table.drop(columns="exclusion_reason").isna().any().any():
+        raise ValueError("model table contains NaNs")
+    table.to_parquet(Path(cfg["paths"]["processed_dir"]) / MODEL_TABLE, index=False)
+
+    clean = table[~table["is_excluded"]]
+    drift = clean.groupby("split", sort=False).agg(
+        rows=("year", "size"),
+        mean_label=("crash_count", "mean"),
+        mean_prev1=("prev1_crashes", "mean"),
+        mean_prev3=("prev3_crashes_mean", "mean"),
+        mean_prev1_share_x1e4=("prev1_crash_share", lambda x: 1e4 * x.mean()),
+        covid_window_rows=("covid_in_window", "mean"),
+    )
+    drift = drift.reindex(["train", "val", "test"]).reset_index()
+    by_year = (
+        clean.groupby("year")
+        .agg(
+            mean_label=("crash_count", "mean"),
+            mean_prev1=("prev1_crashes", "mean"),
+            mean_prev3=("prev3_crashes_mean", "mean"),
+        )
+        .reset_index()
+    )
+    by_year["year"] = by_year["year"].astype(str)
+    lines = [
+        "",
+        "# History features",
+        "",
+        "Built per label year Y from years strictly before Y (see `features/history.py` and "
+        "the leakage test in `tests/test_history.py`): prev1 and prev3-mean crash and severe "
+        "counts, the same as shares of the citywide intersection total of those years, years "
+        "since the last crash (capped at 3), and `covid_in_window` when Y-3..Y-1 touches "
+        "2020-2021. Label year 2016 only has 2014-2015 behind it, so its prev3 mean is over "
+        "two years (`n_history_years`).",
+        "",
+        "## Drift check (clean intersections)",
+        "",
+        markdown_table(drift),
+        "",
+        markdown_table(by_year),
+        "",
+    ]
+    with open(Path(cfg["paths"]["reports_dir"]) / "features.md", "a") as f:
+        f.write("\n".join(lines))
+    log.info("model table: %d rows x %d columns", *table.shape)
+    return table
+
+
 def run_features(cfg: dict[str, Any]) -> None:
-    run_labels(cfg)
-    build_static(cfg)
+    labels = run_labels(cfg)
+    static = build_static(cfg)
+    build_model_table(cfg, labels, static)
