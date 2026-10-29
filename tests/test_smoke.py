@@ -12,7 +12,17 @@ def test_default_config_loads():
 
 def test_cli_lists_all_steps():
     help_text = build_parser().format_help()
-    for step in ["download", "graph", "snap", "features", "train", "evaluate", "app", "all"]:
+    for step in [
+        "download",
+        "clean",
+        "graph",
+        "snap",
+        "features",
+        "train",
+        "evaluate",
+        "app",
+        "all",
+    ]:
         assert step in help_text
 
 
