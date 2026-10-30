@@ -81,31 +81,29 @@ def test_route_stats():
     assert s["risk_reduction_pct"] == pytest.approx(100 * (1 - safe.risk / fast.risk))
 
 
-def _scored_toy(toy_graph):
+def _scored_toy(toy_graph, class_rates):
     G = toy_graph
     for u, v, k in list(G.edges(keys=True)):
         G.edges[u, v, k]["travel_time"] = G.edges[u, v, k]["length"] / 10
         if {u, v} == {6, 3}:
             G.edges[u, v, k]["highway"] = "motorway"
     _, node_map = consolidate(G, tolerance=10)
-    segments, edge_map = segment_frames(G)
-    risk = pd.DataFrame({"intersection_id": node_map["intersection_id"].unique(), "risk": [5.0]})
-    rates = pd.DataFrame(
-        {"crashes_per_km_year": [0.0, 2.0]}, index=pd.Index(["secondary", "motorway"])
-    )
-    attach_risk(G, node_map, edge_map, segments, risk, rates)
+    _, edge_map = segment_frames(G)
+    per_mev = pd.Series(5.0, index=node_map["intersection_id"].unique())
+    rates = class_rates(G, edge_map, {"secondary": 0.0, "motorway": 2.0})
+    attach_risk(G, node_map, edge_map, per_mev, rates)
     return G
 
 
-def test_route_through_jogged_intersection_is_charged_once(toy_graph):
-    G = _scored_toy(toy_graph)
+def test_route_through_jogged_intersection_is_charged_once(toy_graph, class_rates):
+    G = _scored_toy(toy_graph, class_rates)
     route = fastest_route(Router(G), 1, 5)  # 1 -> 2 -> 6 -> 5: two OSM nodes, one intersection
     assert route.nodes == [1, 2, 6, 5]
     assert route.risk == pytest.approx(5.0)
 
 
-def test_motorway_edges_carry_risk(toy_graph):
-    G = _scored_toy(toy_graph)
+def test_motorway_edges_carry_risk(toy_graph, class_rates):
+    G = _scored_toy(toy_graph, class_rates)
     route = fastest_route(Router(G), 6, 3)  # the motorway edge only
     assert route.risk == pytest.approx(2.0 * 0.188)
     assert route.motorway_km == pytest.approx(0.188)

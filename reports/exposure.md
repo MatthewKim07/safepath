@@ -93,18 +93,18 @@ Each clean intersection's crashes are split across the edges entering it in prop
 
 ## 4. Expressways: MTO vs TPS
 
-TPS crashes on an expressway = mid-block crashes on its segments, plus intersection crashes charged to its edges at ramp-merge clusters, plus the excess (actual - static-only expected) at expressway-proxy intersections attributed to the nearest expressway. MTO rates are reportable collisions per MVKM from MTO's own volumes (reports/mto.md). DVP and Gardiner vehicle-km use the lane-scaled AADT; the last column shows the rate if the uncorrected model AADT were used instead.
+TPS crashes on an expressway = mid-block crashes on its segments, plus intersection crashes charged to its edges at ramp-merge clusters, plus the excess (actual - SPF-expected) at expressway-proxy intersections attributed to the nearest expressway. MTO rates are reportable collisions per MVKM from MTO's own volumes (reports/mto.md). DVP and Gardiner vehicle-km use the lane-scaled AADT; the last column shows the rate if the uncorrected model AADT were used instead.
 
 | expressway | carriageway km | MVKM/yr (our AADT) | TPS crashes/yr (mid-block + ramp merges + proxy excess) | TPS per MVKM | MTO collisions/yr (2015-19) | MTO per MVKM (2015-19) | TPS per MVKM if model AADT |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| 401 | 155.897 | 5,460.609 | 452.818 | 0.083 | 5,316.400 | 1.023 | nan |
+| 401 | 155.897 | 5,460.609 | 461.355 | 0.084 | 5,316.400 | 1.023 | nan |
 | 400 | 16.226 | 608.962 | 34.784 | 0.057 | 497.800 | 0.857 | nan |
 | 404 | 11.138 | 548.348 | 37.666 | 0.069 | 440.200 | 0.916 | nan |
 | 409 | 8.278 | 150.156 | 6.750 | 0.045 | 85.000 | 0.750 | nan |
 | 427 | 44.222 | 1,670.236 | 81.398 | 0.049 | 726.800 | 0.472 | nan |
 | QEW | 1.407 | 47.249 | 3.203 | 0.068 | 41.200 | 1.021 | nan |
-| DVP | 29.959 | 907.874 | 526.721 | 0.580 | nan | nan | 0.374 |
-| Gardiner | 40.515 | 1,258.668 | 75.105 | 0.060 | nan | nan | 0.036 |
+| DVP | 29.959 | 907.874 | 527.616 | 0.581 | nan | nan | 0.374 |
+| Gardiner | 40.515 | 1,258.668 | 77.578 | 0.062 | nan | nan | 0.038 |
 | Allen Road | 10.027 | 281.558 | 77.172 | 0.274 | nan | nan | 0.183 |
 
 The Gardiner's TPS rate is implausibly low. 74 Lake Shore Blvd intersections lie within 150 m of it and carry 1,312 crashes/yr; 5 of them are in the top 20 by rate above. TPS appears to place many Gardiner crashes at the surface intersections beneath it, as it places DVP crashes at side streets, but the CP3 expressway-proxy rule (residential corners far above their class median) does not catch arterial intersections. If every one of those crashes were a Gardiner crash the rate would be 1.10 per MVKM; the truth lies between the two.
@@ -112,6 +112,6 @@ The Gardiner's TPS rate is implausibly low. 74 Lake Shore Blvd intersections lie
 ## What this says
 
 - **Residential vs arterial.** Per kilometre (CP4 view) primary roads carry 40 crashes/km/yr against 2.0 on residential streets. Per vehicle-km the gap shrinks to 7.74 vs 6.38 crashes per MVKM (1.2x instead of 20x). Local x local intersections have 1.06 crashes per MEV vs 2.59 at arterial x arterial ones. A residential cut-through is therefore not the near-free option count-based risk made it look like.
-- **Freeways.** MTO's 400-series rate in Toronto is 0.47-1.02 collisions per MVKM, while TPS records 0.083 per MVKM on the 401, i.e. about 8% of the collisions MTO counts. With MTO's rates the 401 is 8x safer per vehicle-km than primary arterials (7.74 per MVKM); CP4's per-km TPS risk put the gap at ~40x (reports/risk.md, risk per directed km 76 vs 1.9). Freeways are safer per kilometre driven, but not nearly free.
+- **Freeways.** MTO's 400-series rate in Toronto is 0.47-1.02 collisions per MVKM, while TPS records 0.084 per MVKM on the 401, i.e. about 8% of the collisions MTO counts. With MTO's rates the 401 is 8x safer per vehicle-km than primary arterials (7.74 per MVKM); CP4's per-km TPS risk put the gap at ~40x (reports/risk.md, risk per directed km 76 vs 1.9). Freeways are safer per kilometre driven, but not nearly free.
 - **DVP** (TPS jurisdiction): 0.58 crashes per MVKM with lane-scaled AADT (0.37 with the model's AADT), the same order as MTO's 400-series rates, mostly through the expressway-proxy excess. **Gardiner**: 0.06 as recorded, up to 1.10 if its likely crashes at Lake Shore Blvd are counted (section 4). CP6 should attribute those, or give the city expressways an MTO-like rate.
 - **Hotspot lists.** Normalising keeps 8 of the top 20; the rate list adds lower-volume intersections with many crashes for their traffic. Rates at low-volume intersections are noisy, which is what the Empirical Bayes step in CP6 is for.

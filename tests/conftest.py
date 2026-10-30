@@ -41,3 +41,18 @@ def _graph() -> nx.MultiDiGraph:
 @pytest.fixture
 def toy_graph() -> nx.MultiDiGraph:
     return _graph()
+
+
+@pytest.fixture
+def class_rates():
+    """Build the per-edge rate table attach_risk expects from a rate per highway class."""
+
+    def build(G: nx.MultiDiGraph, edge_map, by_class: dict[str, float]):
+        e = edge_map.copy()
+        e["rate_group"] = [
+            G.edges[u, v, k]["highway"] for u, v, k in e[["u", "v", "key"]].itertuples(index=False)
+        ]
+        e["rate_per_mvkm"] = e["rate_group"].map(by_class).fillna(0.0)
+        return e
+
+    return build

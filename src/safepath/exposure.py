@@ -231,12 +231,12 @@ def class_table(e: pd.DataFrame) -> pd.DataFrame:
 
 
 def expressway_proxy_excess(d: dict[str, pd.DataFrame], e: pd.DataFrame) -> pd.Series:
-    """Expressway-proxy intersections' crashes above their static-only expectation, per
+    """Expressway-proxy intersections' crashes above their SPF expectation, per
     year, attributed to the nearest named expressway segment."""
     p = d["proxies"]
     ids = p.index[p["exclusion_reason"] == "expressway_proxy"]
     actual = d["inter_crashes"].reindex(ids).fillna(0)
-    excess = (actual - d["risk"]["pred_static"].reindex(ids)).clip(lower=0)
+    excess = (actual - d["risk"]["spf"].reindex(ids)).clip(lower=0)
     ex = e[e["expressway"].notna()].drop_duplicates("segment_id")
     tree = cKDTree(np.column_stack([ex["mid_x"], ex["mid_y"]]))
     _, idx = tree.query(d["inter_xy"].loc[ids, ["x", "y"]].to_numpy())
@@ -355,7 +355,7 @@ def write_report(cfg: dict[str, Any], d: dict[str, pd.DataFrame], path: Path) ->
         "",
         "TPS crashes on an expressway = mid-block crashes on its segments, plus intersection "
         "crashes charged to its edges at ramp-merge clusters, plus the excess (actual - "
-        "static-only expected) at expressway-proxy intersections attributed to the nearest "
+        "SPF-expected) at expressway-proxy intersections attributed to the nearest "
         "expressway. MTO rates are reportable collisions per MVKM from MTO's own volumes "
         "(reports/mto.md). DVP and Gardiner vehicle-km use the lane-scaled AADT; the last "
         "column shows the rate if the uncorrected model AADT were used instead.",
