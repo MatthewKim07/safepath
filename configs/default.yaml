@@ -88,3 +88,18 @@ volumes:
     svc_unnamed_m: 15        # ...must share the counted street's name, or be this close
   # years of SVC counts used for month factors (2020-2021 are always left out)
   month_factor_years: [2010, 2026]
+
+mto:
+  # Ontario MTO Technical Publications, Open Government Licence - Ontario.
+  portal: https://www.library.mto.gov.on.ca/SydneyPLUS/TechPubs/Portal/tp/tvSplash.aspx
+  files:
+    aadt_csv: https://www.library.mto.gov.on.ca/SydneyPLUS/TechPubs/Theme.aspx?r=702797&f=files%2fTraffic_Volumes_1988-2024.csv&m=resource
+    volumes_pdf: https://www.library.mto.gov.on.ca/SydneyPLUS/TechPubs/Theme.aspx?r=702797&f=files%2FProvincial_Highways_traffic_Volumes_1988-2021.pdf&m=resource
+  filenames:
+    aadt_csv: Traffic_Volumes_1988-2024.csv
+    volumes_pdf: Provincial_Highways_Traffic_Volumes_1988-2021.pdf
+  # printed page ranges [start, end) from the PDF's table of contents: QEW, then Hwys 400-427
+  pdf_pages: [[1, 46], [853, 1135]]
+  latest_year: 2024
+  fetch_attempts: 3
+  backoff_seconds: 15

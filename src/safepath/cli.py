@@ -12,6 +12,7 @@ from pathlib import Path
 from safepath.config import load_config
 from safepath.data.clean import run_clean
 from safepath.data.download import download_collisions
+from safepath.data.mto import run_mto
 from safepath.data.report import run_report
 from safepath.data.volume_report import run_volumes
 from safepath.evaluate import run_evaluate
@@ -54,6 +55,7 @@ STEPS: dict[str, tuple[str, Callable[[dict], None]]] = {
     "score": ("Score 2026 risk and write it onto the routing graph", run_score),
     "route": ("Calibrate k and report the routing trade-off", run_routing),
     "volumes": ("Download Toronto traffic counts, expand to AADT, match to the graph", run_volumes),
+    "mto": ("Map MTO 400-series AADT and collision rates onto the graph", run_mto),
     "app": ("Launch the Streamlit routing app", run_app),
 }
 PIPELINE = [
@@ -70,6 +72,7 @@ PIPELINE = [
     "score",
     "route",
     "volumes",
+    "mto",
 ]
 
 
