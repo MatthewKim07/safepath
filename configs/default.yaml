@@ -59,3 +59,26 @@ proxies:
     max_dist_motorway_m: 200
     min_train_crashes: 150
     min_ratio_to_combo_median: 20
+
+volumes:
+  # City of Toronto open data (CKAN). Packages are found by search + exact title at run time.
+  ckan_base: https://ckan0.cf.opendata.inter.prod-toronto.ca/api/3/action/
+  timeout_seconds: 300
+  fetch_attempts: 3
+  backoff_seconds: 15
+  packages:
+    tmc:
+      query: turning movement counts
+      title: Traffic Volumes - Multimodal Intersection Turning Movement Counts
+      # the summary carries every count; raw 15-minute files only verify the counted windows
+      resources: [tmc_summary_data.csv, tmc_raw_data_2010_2019.csv, tmc_raw_data_2020_2029.csv]
+    svc:
+      query: speed volume classification counts
+      title: Traffic Volumes - Midblock Vehicle Speed, Volume and Classification Counts
+      # raw 15-minute files (2015+) give hour-of-day / day-of-week profiles and directions
+      resources:
+        - svc_summary_data.csv
+        - svc_raw_data_volume_2015_2019
+        - svc_raw_data_volume_2020_2024
+        - svc_raw_data_speed_2020_2024
+        - svc_raw_data_speed_2025_2029
