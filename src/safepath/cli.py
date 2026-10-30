@@ -20,6 +20,7 @@ from safepath.exposure import run_exposure
 from safepath.features.build import run_features
 from safepath.graph import run_graph
 from safepath.locations import run_locations
+from safepath.models.spf import run_spf
 from safepath.models.train import run_train
 from safepath.models.volume_report import run_volume_model
 from safepath.risk import run_score
@@ -53,6 +54,7 @@ STEPS: dict[str, tuple[str, Callable[[dict], None]]] = {
     "report-snap": ("Write the snapping report", run_snap_report),
     "features": ("Build intersection-year labels and features", run_features),
     "train": ("Fit baselines and LightGBM risk models", run_train),
+    "spf": ("Fit the negative binomial safety performance function", run_spf),
     "evaluate": ("Evaluate models on val 2024 and test 2025", run_evaluate),
     "score": ("Score 2026 risk and write it onto the routing graph", run_score),
     "route": ("Calibrate k and report the routing trade-off", run_routing),
@@ -71,14 +73,15 @@ PIPELINE = [
     "snap",
     "report-snap",
     "features",
-    "train",
-    "evaluate",
-    "score",
-    "route",
     "volumes",
     "mto",
     "volume-model",
+    "train",
+    "spf",
+    "evaluate",
+    "score",
     "exposure",
+    "route",
 ]
 
 

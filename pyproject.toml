@@ -28,6 +28,7 @@ dependencies = [
     "streamlit>=1.32",
     "folium>=0.16",
     "streamlit-folium>=0.18",
+    "statsmodels>=0.14",
     "pypdf>=4.0",
 ]
 
