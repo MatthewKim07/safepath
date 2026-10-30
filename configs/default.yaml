@@ -82,3 +82,9 @@ volumes:
         - svc_raw_data_volume_2020_2024
         - svc_raw_data_speed_2020_2024
         - svc_raw_data_speed_2025_2029
+  match:
+    tmc_intersection_m: 40   # City intersection points vs consolidated OSM intersections
+    svc_segment_m: 40        # candidate segments for a mid-block count...
+    svc_unnamed_m: 15        # ...must share the counted street's name, or be this close
+  # years of SVC counts used for month factors (2020-2021 are always left out)
+  month_factor_years: [2010, 2026]

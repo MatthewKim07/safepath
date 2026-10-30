@@ -13,7 +13,7 @@ from safepath.config import load_config
 from safepath.data.clean import run_clean
 from safepath.data.download import download_collisions
 from safepath.data.report import run_report
-from safepath.data.volumes import run_volume_download
+from safepath.data.volume_report import run_volumes
 from safepath.evaluate import run_evaluate
 from safepath.features.build import run_features
 from safepath.graph import run_graph
@@ -53,7 +53,7 @@ STEPS: dict[str, tuple[str, Callable[[dict], None]]] = {
     "evaluate": ("Evaluate models on val 2024 and test 2025", run_evaluate),
     "score": ("Score 2026 risk and write it onto the routing graph", run_score),
     "route": ("Calibrate k and report the routing trade-off", run_routing),
-    "volumes": ("Download and parse City of Toronto traffic counts", run_volume_download),
+    "volumes": ("Download Toronto traffic counts, expand to AADT, match to the graph", run_volumes),
     "app": ("Launch the Streamlit routing app", run_app),
 }
 PIPELINE = [
