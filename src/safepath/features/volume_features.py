@@ -7,12 +7,12 @@ summed over their directed edges. No coordinates or neighbourhood IDs.
 
 from __future__ import annotations
 
-import pickle
 from pathlib import Path
 from typing import Any
 
 import geopandas as gpd
 import numpy as np
+import osmnx as ox
 import pandas as pd
 from pyproj import Transformer
 from scipy.spatial import cKDTree
@@ -21,12 +21,12 @@ from safepath.features.build import STATIC
 from safepath.features.centrality import edge_betweenness
 from safepath.features.roads import class_rank
 from safepath.features.static import TRUTHY, count_within, first_number
-from safepath.graph import EDGE_MAP, NODE_MAP
+from safepath.graph import EDGE_MAP, NODE_MAP, PROJ_GRAPH, SEGMENTS
 from safepath.locations import MOTORWAY_CLASSES
-from safepath.risk import ROUTING_GRAPH
 from safepath.routing import PRESETS, Router
 
 EDGE_CENTRALITY = "edge_centrality.parquet"
+INTERSECTION_EXPOSURE = "intersection_exposure.parquet"
 # global: random sources, every destination; local: destinations within 5 minutes
 CENTRALITY = {"bt_global": {"n_sources": 2000}, "bt_local": {"n_sources": 5000, "limit": 300}}
 
@@ -37,8 +37,7 @@ def edge_centrality(cfg: dict[str, Any]) -> pd.DataFrame:
     path = processed / EDGE_CENTRALITY
     if path.exists():
         return pd.read_parquet(path)
-    with open(processed / ROUTING_GRAPH, "rb") as f:
-        router = Router(pickle.load(f))
+    router = Router(ox.load_graphml(processed / PROJ_GRAPH))
     out = pd.DataFrame(
         {"u": router.nodes[router.u], "v": router.nodes[router.v], "key": router.key}
     )
@@ -150,3 +149,50 @@ def segment_features(
     seg["n_intersections_500m"] = cKDTree(ixy).query_ball_point(xy, r=500, return_length=True)
     seg["x"], seg["y"] = xy[:, 0], xy[:, 1]
     return pd.DataFrame(seg.drop(columns="geometry"))
+
+
+def approach_volumes(
+    edges: pd.DataFrame, node_map: pd.DataFrame, segments: pd.DataFrame
+) -> pd.DataFrame:
+    """Major- and minor-road AADT per intersection from the two-way AADT of the segments
+    entering it. Approaches are grouped into roads by street name (an unnamed segment is its
+    own road); a road's AADT is the largest of its approach segments (the two carriageways
+    of a divided road carry the same two-way figure). Major = busiest road, minor = second
+    busiest; NaN when the intersection has a single road."""
+    cluster = node_map.set_index("osmid")["intersection_id"]
+    e = edges.drop(columns="name", errors="ignore")
+    e = e.assign(cu=e["u"].map(cluster), cv=e["v"].map(cluster))
+    ent = e[e["cv"].notna() & (e["cu"] != e["cv"])].merge(
+        segments[["segment_id", "name"]], on="segment_id"
+    )
+    ent["road"] = ent["name"].fillna("segment " + ent["segment_id"].astype(str))
+    road = ent.groupby([ent["cv"].astype(int).rename("intersection_id"), "road"])[
+        "aadt_segment"
+    ].max()
+    road = road.reset_index().sort_values(
+        ["intersection_id", "aadt_segment"], ascending=[True, False]
+    )
+    rank = road.groupby("intersection_id").cumcount()
+    out = pd.DataFrame(
+        {
+            "major_aadt": road[rank == 0].set_index("intersection_id")["aadt_segment"],
+            "n_roads": road.groupby("intersection_id").size(),
+        }
+    )
+    out["minor_aadt"] = road[rank == 1].set_index("intersection_id")["aadt_segment"]
+    return out
+
+
+def write_intersection_exposure(
+    processed: Path, aadt_intersections: pd.DataFrame, edges: pd.DataFrame
+) -> pd.DataFrame:
+    """Entering, major-road and minor-road AADT per intersection, for the SPF and the
+    LightGBM + AADT model."""
+    segments = pd.read_parquet(processed / SEGMENTS, columns=["segment_id", "name"])
+    node_map = pd.read_parquet(processed / NODE_MAP)
+    out = aadt_intersections.set_index("intersection_id")[["aadt"]].rename(
+        columns={"aadt": "entering_aadt"}
+    )
+    out = out.join(approach_volumes(edges, node_map, segments))
+    out.reset_index().to_parquet(processed / INTERSECTION_EXPOSURE, index=False)
+    return out

@@ -21,6 +21,7 @@ from safepath.features.volume_features import (
     edge_centrality,
     intersection_features,
     segment_features,
+    write_intersection_exposure,
 )
 from safepath.graph import EDGE_MAP, INTERSECTIONS, SEGMENTS
 from safepath.locations import markdown_table
@@ -328,6 +329,7 @@ def run_volume_model(cfg: dict[str, Any]) -> dict[str, Any]:
     r["expressways"] = r["expressways"]["table"]
     edges = edges.rename(columns={"aadt": "aadt_segment"})
     edges[EDGE_COLUMNS].to_parquet(processed / AADT_EDGES, index=False)
+    write_intersection_exposure(processed, out_i, edges)
 
     r["final_inter"] = distribution(out_i["aadt"], out_i["class_combo"], "class combo")
     r["final_seg"] = distribution(seg_out["aadt"], sx["highway"], "highway")
