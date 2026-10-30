@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import geopandas as gpd
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
@@ -31,10 +32,10 @@ from scipy.sparse.csgraph import dijkstra
 from scipy.spatial import cKDTree
 
 from safepath.data.report import BAR, GRID, SURFACE, TEXT, TEXT_MUTED
-from safepath.graph import NODE_MAP
+from safepath.graph import NODE_MAP, SEGMENTS
 from safepath.locations import MOTORWAY_CLASSES, markdown_table
 from safepath.movements import U_TURN_PENALTY_S, bearing, build_movements
-from safepath.risk import ROUTING_GRAPH
+from safepath.risk import EDGE_RISK, ROUTING_GRAPH
 
 log = logging.getLogger(__name__)
 
@@ -338,6 +339,7 @@ def tradeoff_table(
                     "motorway_share": r.motorway_km / r.km if r.km else 0,
                     "fast_motorway_share": fast.motorway_km / fast.km if fast.km else 0,
                     "residential_share": r.residential_km / r.km if r.km else 0,
+                    "uturns": r.uturns,
                     "fast_residential_share": fast.residential_km / fast.km if fast.km else 0,
                 }
             )
@@ -360,6 +362,7 @@ def summarise(trade: pd.DataFrame) -> pd.DataFrame:
             .quantile(0.9),
             "motorway share": g["motorway_share"].mean(),
             "residential share": g["residential_share"].mean(),
+            "routes with a U-turn": g["uturns"].apply(lambda x: (x > 0).mean()),
         }
     ).reset_index()
 
@@ -402,7 +405,7 @@ def plot_pareto(
         f"{origin} → {destination}: time vs risk as λ rises", loc="left", fontsize=11, color=TEXT
     )
     ax.set_xlabel("route time (minutes, free-flow)", fontsize=9, color=TEXT_MUTED)
-    ax.set_ylabel("expected crashes/yr at route locations", fontsize=9, color=TEXT_MUTED)
+    ax.set_ylabel("expected crashes per million trips", fontsize=9, color=TEXT_MUTED)
     ax.tick_params(colors=TEXT_MUTED, labelsize=8, length=0)
     ax.grid(color=GRID, linewidth=0.7)
     for side in ("top", "right"):
@@ -414,10 +417,11 @@ def plot_pareto(
     return pts.assign(pair=name)
 
 
-def load_router(cfg: dict[str, Any]) -> Router:
+def load_router(cfg: dict[str, Any], G: nx.MultiDiGraph | None = None) -> Router:
     processed = Path(cfg["paths"]["processed_dir"])
-    with open(processed / ROUTING_GRAPH, "rb") as f:
-        G = pickle.load(f)
+    if G is None:
+        with open(processed / ROUTING_GRAPH, "rb") as f:
+            G = pickle.load(f)
     node_map = pd.read_parquet(processed / NODE_MAP)
     junction = dict(zip(node_map["osmid"], node_map["intersection_id"], strict=True))
     router = Router(G, node_junction=junction)
@@ -427,6 +431,134 @@ def load_router(cfg: dict[str, Any]) -> Router:
     return router
 
 
+# --------------------------------------------------------------------------- sensitivity
+
+CP4_BASELINE = "cp4_baseline.json"
+CITY_XWAY = ("Gardiner", "DVP", "Allen Road")
+
+
+def rate_groups(cfg: dict[str, Any], G: nx.MultiDiGraph) -> pd.Series:
+    """Rate group of every edge of G (risk.py's edge_risk.parquet), indexed like G.edges."""
+    processed = Path(cfg["paths"]["processed_dir"])
+    er = pd.read_parquet(processed / EDGE_RISK, columns=["u", "v", "key", "rate_group"])
+    er = er.set_index(["u", "v", "key"])["rate_group"]
+    return er.reindex(pd.MultiIndex.from_tuples(list(G.edges(keys=True))))
+
+
+def scaled_graph(G: nx.MultiDiGraph, groups: pd.Series, scale: dict[str, float]) -> nx.MultiDiGraph:
+    """Copy of G with segment risk multiplied by `scale[rate_group]` (others unchanged)."""
+    H = G.copy()
+    factor = groups.map(scale).fillna(1.0).to_numpy()
+    for (u, v, k), f in zip(H.edges(keys=True), factor, strict=True):
+        if f != 1.0:
+            d = H.edges[u, v, k]
+            d["segment_risk"] = d["segment_risk"] * f
+            d["risk"] = d["intersection_risk"] + d["segment_risk"]
+    return H
+
+
+def sensitivity_variants() -> dict[str, dict[str, float]]:
+    freeway = ["400-series (MTO)", *[f"city expressway: {x}" for x in CITY_XWAY],
+               "other expressway"]  # fmt: skip
+    city = [f"city expressway: {x}" for x in CITY_XWAY]
+    return {
+        "baseline": {},
+        "freeway rates x0.5": {g: 0.5 for g in freeway},
+        "freeway rates x2": {g: 2.0 for g in freeway},
+        "Gardiner/DVP/Allen volume +30%": {g: 1 / 1.3 for g in city},
+        "Gardiner/DVP/Allen volume -30%": {g: 1 / 0.7 for g in city},
+    }
+
+
+def run_sensitivity(
+    cfg: dict[str, Any], base: Router, pairs: list[tuple[int, int]], lambdas: list[float]
+) -> pd.DataFrame:
+    """The 200-trip evaluation under scaled freeway risk, with k held at its baseline value
+    so that lambda keeps its meaning and the scaling shows up fully in behaviour."""
+    groups = rate_groups(cfg, base.G)
+    rows = []
+    o = base.nearest_node(*PRESETS["Union Station"])
+    d = base.nearest_node(*PRESETS["Yorkdale"])
+    for name, scale in sensitivity_variants().items():
+        router = base if not scale else load_router(cfg, scaled_graph(base.G, groups, scale))
+        router.k = base.k
+        trade = tradeoff_table(router, pairs, [0, *lambdas])
+        case = router.route(o, d, 2.0)
+        rows.append(
+            summarise(trade).assign(
+                variant=name, union_yorkdale_km=case.km, union_yorkdale_min=case.minutes
+            )
+        )
+    return pd.concat(rows, ignore_index=True)
+
+
+def plot_before_after(
+    router: Router, cp4: dict[str, Any], lam: float, segments: gpd.GeoDataFrame, path: Path
+) -> dict[str, Any]:
+    """CP4's count-based safest route vs the CP6 per-vehicle route, Union Station ->
+    Yorkdale at the same lambda, both scored with CP6 per-vehicle risk."""
+    o = router.nearest_node(*PRESETS["Union Station"])
+    d = router.nearest_node(*PRESETS["Yorkdale"])
+    fast = router.route(o, d, 0)
+    new = router.route(o, d, lam)
+    old_nodes = cp4["nodes"]
+    old_edges = []
+    for a, b in zip(old_nodes[:-1], old_nodes[1:], strict=True):
+        keys = list(router.G[a][b])
+        k_best = min(keys, key=lambda k: router.G.edges[a, b, k]["travel_time"])
+        old_edges.append(np.flatnonzero(
+            (router.u == router.index[a]) & (router.v == router.index[b]) & (router.key == k_best)
+        )[0])  # fmt: skip
+    old = router._route_from_edges(router.index[old_nodes[0]], np.array(old_edges), 0)
+
+    def line(route: Route) -> np.ndarray:
+        return router.xy[[router.index[n] for n in route.nodes]]
+
+    fig, ax = plt.subplots(figsize=(8, 7.5), facecolor=SURFACE, layout="constrained")
+    ax.set_facecolor(SURFACE)
+    pts = np.vstack([line(fast), line(new), line(old)])
+    pad = 1500
+    box = (
+        pts[:, 0].min() - pad,
+        pts[:, 0].max() + pad,
+        pts[:, 1].min() - pad,
+        pts[:, 1].max() + pad,
+    )
+    bg = segments.cx[box[0] : box[1], box[2] : box[3]]
+    bg[bg["highway"].isin(["primary", "secondary", "motorway", "tertiary"])].plot(
+        ax=ax, color=GRID, linewidth=0.6
+    )
+    styles = [
+        (old, "#e34948", 5, f"CP4 safest, λ={lam:g}: count-based risk"),
+        (new, "#008300", 3.5, f"CP6 safest, λ={lam:g}: per-vehicle risk"),
+        (fast, TEXT_MUTED, 2, "fastest"),
+    ]
+    for route, color, width, label in styles:
+        xy = line(route)
+        ax.plot(xy[:, 0], xy[:, 1], color=color, linewidth=width, alpha=0.85,
+                label=f"{label} — {route.km:.1f} km, {route.minutes:.1f} min, "
+                f"{route.risk:.0f} per M trips")  # fmt: skip
+    for name in ("Union Station", "Yorkdale"):
+        n = o if name == "Union Station" else d
+        x, y = router.xy[router.index[n]]
+        ax.scatter([x], [y], s=60, color=TEXT, zorder=5)
+        ax.annotate(name, (x, y), xytext=(8, 8), textcoords="offset points", fontsize=9, color=TEXT)
+    ax.set_xlim(box[0], box[1])
+    ax.set_ylim(box[2], box[3])
+    ax.set_aspect("equal")
+    ax.set_axis_off()
+    ax.legend(loc="lower right", fontsize=8, frameon=False, labelcolor=TEXT)
+    ax.set_title("Union Station → Yorkdale: CP4 vs CP6 safest route (risk scored per vehicle)",
+                 loc="left", fontsize=10, color=TEXT)  # fmt: skip
+    fig.savefig(path, dpi=150, facecolor=SURFACE)
+    plt.close(fig)
+    return {
+        name: {"km": r.km, "minutes": r.minutes, "risk_per_million_trips": r.risk,
+               "motorway_km": r.motorway_km, "uturns": r.uturns}
+        for name, r in (("fastest", fast), ("cp6", new), ("cp4", old))
+    }  # fmt: skip
+
+
 def run_routing(cfg: dict[str, Any]) -> dict[str, Any]:
     processed = Path(cfg["paths"]["processed_dir"])
     reports, figures = Path(cfg["paths"]["reports_dir"]), Path(cfg["paths"]["figures_dir"])
@@ -434,8 +566,9 @@ def run_routing(cfg: dict[str, Any]) -> dict[str, Any]:
     pairs = random_pairs(router, 200)
     calib = calibrate_k(router, pairs)
     (processed / ROUTING_K).write_text(json.dumps(calib, indent=2))
+    lambdas = [0.5, 1, 2]
     t0 = time.time()
-    trade = tradeoff_table(router, pairs, [0, 0.5, 1, 2])
+    trade = tradeoff_table(router, pairs, [0, *lambdas])
     per_route_s = (time.time() - t0) / (len(pairs) * 5)  # one fastest + four lambdas each
     summary = summarise(trade)
 
@@ -446,60 +579,193 @@ def run_routing(cfg: dict[str, Any]) -> dict[str, Any]:
             plot_pareto(router, slug, origin, destination, figures / f"pareto_{slug}.png")
         )
     sweep = pd.concat(sweeps)
-    write_routing_report(calib, summary, sweep, per_route_s, reports / "routing.md")
-    log.info("k = %.1f s per crash/yr; wrote routing report", calib["k_seconds_per_crash"])
-    return {"calibration": calib, "summary": summary}
+    cp4 = json.loads((Path(cfg["paths"]["reports_dir"]) / CP4_BASELINE).read_text())
+    segments = gpd.read_parquet(processed / SEGMENTS)
+    case = plot_before_after(
+        router, cp4["union_yorkdale_lambda2"], 2.0, segments,
+        figures / "before_after_union_yorkdale.png",
+    )  # fmt: skip
+    sens = run_sensitivity(cfg, router, pairs, lambdas)
+    write_routing_report(
+        calib, summary, sweep, per_route_s, cp4, case, sens, reports / "routing.md"
+    )
+    log.info("k = %.1f s per crash per million trips; wrote routing report",
+             calib["k_seconds_per_crash"])  # fmt: skip
+    return {"calibration": calib, "summary": summary, "case": case, "sensitivity": sens}
+
+
+def cp4_vs_cp6(cp4: dict[str, Any], summary: pd.DataFrame) -> pd.DataFrame:
+    old = pd.DataFrame(cp4["summary_200_trips"]).set_index("lam")
+    new = summary.set_index("lam")
+    cols = ["median extra min", "p90 extra min", "median % risk reduction",
+            "median detour (km ratio)", "p90 detour (km ratio)", "motorway share",
+            "residential share"]  # fmt: skip
+    rows = []
+    for lam in new.index:
+        for label, src in (("CP4 (count-based)", old), ("CP6 (per-vehicle)", new)):
+            if lam in src.index:
+                rows.append({"λ": f"{lam:g}", "version": label, **src.loc[lam, cols].to_dict()})
+    return pd.DataFrame(rows)
+
+
+def sensitivity_table(sens: pd.DataFrame) -> pd.DataFrame:
+    cols = ["variant", "lam", "median extra min", "median % risk reduction",
+            "median detour (km ratio)", "motorway share", "residential share"]  # fmt: skip
+    return sens.loc[sens["lam"] > 0, cols].rename(columns={"lam": "λ"})
+
+
+def case_by_variant(sens: pd.DataFrame) -> pd.DataFrame:
+    first = sens.drop_duplicates("variant")
+    return first[["variant", "union_yorkdale_km", "union_yorkdale_min"]].rename(
+        columns={"union_yorkdale_km": "Union→Yorkdale λ=2 km",
+                 "union_yorkdale_min": "minutes"}
+    )  # fmt: skip
+
+
+def sensitivity_verdict(sens: pd.DataFrame) -> list[str]:
+    at1 = sens[sens["lam"] == 1].set_index("variant")
+    base = at1.loc["baseline"]
+    lines = []
+    for v, r in at1.drop(index="baseline").iterrows():
+        lines.append(
+            f"- {v}: motorway share {base['motorway share']:.0%} -> {r['motorway share']:.0%}, "
+            f"median extra minutes {base['median extra min']:.2f} -> {r['median extra min']:.2f}, "
+            f"median risk reduction {base['median % risk reduction']:.0f}% -> "
+            f"{r['median % risk reduction']:.0f}% (λ = 1)."
+        )
+    spread = at1["motorway share"].max() - at1["motorway share"].min()
+    fastest = sens[sens["lam"] == 0].set_index("variant")["motorway share"]
+    above = (at1["motorway share"] > fastest.reindex(at1.index)).all()
+    lines.append(
+        f"- Across all variants at λ = 1 the motorway share spans {spread:.0%} "
+        f"({at1['motorway share'].min():.0%}-{at1['motorway share'].max():.0%}), against "
+        f"{fastest.iloc[0]:.0%} on the fastest routes."
+    )
+    lines.append(
+        "- **Conclusion:** "
+        + (
+            "the direction of the behaviour does not depend on the MTO/TPS comparability "
+            "assumption: halving or doubling every freeway rate still leaves safer routes "
+            "leaning on freeways (motorway share above the fastest routes' in every "
+            "variant), and moves extra time and risk reduction by a fraction of their "
+            "baseline values. The size of the freeway lean does depend on it."
+            if above
+            else "the freeway lean disappears in at least one variant, so the routing "
+            "behaviour depends on the MTO/TPS comparability assumption."
+        )
+    )
+    return lines
 
 
 def write_routing_report(
-    calib: dict, summary: pd.DataFrame, sweep: pd.DataFrame, per_route_s: float, path: Path
+    calib: dict,
+    summary: pd.DataFrame,
+    sweep: pd.DataFrame,
+    per_route_s: float,
+    cp4: dict[str, Any],
+    case: dict[str, Any],
+    sens: pd.DataFrame,
+    path: Path,
 ) -> None:
     k = calib["k_seconds_per_crash"]
     hist = pd.DataFrame(calib["history"])
-    s0 = summary.set_index("lam").loc[0]
-    s1 = summary.set_index("lam").loc[1]
+    s = summary.set_index("lam")
+    old = pd.DataFrame(cp4["summary_200_trips"]).set_index("lam")
+    c4, c6, cf = case["cp4"], case["cp6"], case["fastest"]
     lines = [
-        "# Routing trade-off",
+        "# Routing trade-off (CP6: per-vehicle risk)",
         "",
-        "Edge cost = travel_time (s, free-flow OSMnx speeds) + λ · k · risk, where risk is "
-        "expected crashes per year at the edge's location (intersection entered + segment).",
+        "Edge cost = travel_time (s, free-flow) + λ · k · risk, where risk is the expected "
+        "number of crashes for one vehicle driving the edge, per million vehicles "
+        "(reports/risk.md). A route's risk is therefore expected crashes per million trips. "
+        "Routing is turn-aware: a U-turn (driving back along the edge just used, or turning "
+        f"more than 150° back onto the same street through an intersection) costs "
+        f"{U_TURN_PENALTY_S:.0f} s.",
         "",
         "## Scaling constant k",
         "",
-        f"k = **{k:.1f} seconds per (crash/yr)**. Chosen as a fixed point over 200 random "
-        "origin/destination pairs (3-25 km apart, seed 7): starting from the fastest routes, "
-        "re-route at λ = 1 and set k = median travel time / median route risk until it moves "
-        f"less than 1%. Check: on the final λ = 1 routes, median risk cost / median travel "
-        f"time = {calib['check_ratio_at_lambda1']:.3f}. So λ = 1 means 'a typical route's "
-        "risk is weighted as much as its travel time'.",
+        f"k = **{k:.1f} seconds per (crash per million trips)**, the fixed point of "
+        "k = median travel time / median route risk on λ = 1 routes over 200 random "
+        "origin/destination pairs (3-25 km apart, seed 7). Check: median risk cost / median "
+        f"travel time on the final λ = 1 routes = {calib['check_ratio_at_lambda1']:.3f}.",
         "",
-        markdown_table(hist, floats="{:.1f}"),
+        markdown_table(hist, floats="{:.2f}"),
         "",
         "## Trade-off over 200 random pairs",
         "",
         markdown_table(summary, floats="{:.2f}"),
         "",
-        "Detour = route km / fastest-route km. Shares are mean fractions of route km on "
-        "motorways (incl. ramps) and on residential streets; λ = 0 values are in the "
-        "Pareto tables below via the fastest route.",
+        f"Mean routing time: {1000 * per_route_s:.0f} ms per route.",
         "",
-        f"Mean routing time: {1000 * per_route_s:.0f} ms per route (scipy Dijkstra).",
+        "## CP4 vs CP6",
+        "",
+        "CP4 routed on expected crashes per year at the locations a route passes (no "
+        "exposure). The '% risk reduction' columns are each version's own risk measure, so "
+        "they are not directly comparable; times, detours and road-class shares are.",
+        "",
+        markdown_table(cp4_vs_cp6(cp4, summary), floats="{:.2f}"),
+        "",
+        f"- Residential share at λ = 1: {old.loc[1, 'residential share']:.0%} in CP4, "
+        f"{s.loc[1, 'residential share']:.0%} now (fastest routes: "
+        f"{old.loc[0, 'residential share']:.0%} / {s.loc[0, 'residential share']:.0%}).",
+        f"- Motorway share at λ = 1: {old.loc[1, 'motorway share']:.0%} in CP4, "
+        f"{s.loc[1, 'motorway share']:.0%} now (fastest routes: "
+        f"{old.loc[0, 'motorway share']:.0%} / {s.loc[0, 'motorway share']:.0%}).",
+        "",
+        "## Case study: Union Station → Yorkdale at λ = 2",
+        "",
+        "![Before and after](figures/before_after_union_yorkdale.png)",
+        "",
+        "| route | km | minutes | expected crashes per million trips | motorway km |",
+        "|---|---:|---:|---:|---:|",
+        *[
+            f"| {label} | {r['km']:.1f} | {r['minutes']:.1f} | {r['risk_per_million_trips']:.1f} "
+            f"| {r['motorway_km']:.1f} |"
+            for label, r in (
+                ("fastest", cf),
+                ("CP4 safest (count-based)", c4),
+                ("CP6 safest (per-vehicle)", c6),
+            )
+        ],  # fmt: skip
+        "",
+        "All three are scored with CP6 per-vehicle risk. The CP4 route ends at the node CP4 "
+        "snapped Yorkdale to (a turning circle on Highland Hill, behind the mall).",
+        "",
+        "**The Yorkdale hook.** CP4 snapped the Yorkdale preset (the middle of the mall) to the "
+        "nearest graph node: a turning circle at the end of Highland Hill, a residential "
+        "cul-de-sac behind the mall. Every route therefore left the 401 at Dufferin and wound "
+        "south through Jane Osler, Groton, Bentworth and Ranee before turning back north "
+        "into the cul-de-sac, which is the hook. It was a snapping artifact, not a routing "
+        "one: the route had no repeated nodes. Fix: snap like a navigation app (never to a "
+        "dead end; a point more than 100 m from any street snaps to the nearest arterial or "
+        "collector access if it is within 150 m of the nearest street), so Yorkdale now snaps "
+        "to Yorkdale Road. Separately, node-based routing could not see U-turns through "
+        "divided-road intersections, which per-vehicle routing uses as a cheap way to dodge a "
+        "risky intersection; routing now runs over turn movements with a U-turn penalty "
+        "(tests: no immediate reversals; a median U-turn loses to a 30 s detour).",
+        "",
+        "## Sensitivity: is the behaviour robust to the MTO/TPS comparability assumption?",
+        "",
+        "Freeway segment rates (400-series from MTO, city expressways from TPS) scaled by 0.5 "
+        "and 2; Gardiner/DVP/Allen volumes ±30% (their per-vehicle rate scales by 1/1.3 and "
+        "1/0.7). k stays at its baseline value.",
+        "",
+        markdown_table(sensitivity_table(sens), floats="{:.2f}"),
+        "",
+        markdown_table(case_by_variant(sens), floats="{:.1f}"),
+        "",
+        *sensitivity_verdict(sens),
         "",
         "## Things to watch",
         "",
-        f"- Residential share of route km rises from {s0['residential share']:.0%} at λ = 0 "
-        f"to {s1['residential share']:.0%} at λ = 1: safer routes cut through local streets, "
-        "whose small intersections carry little predicted risk, to avoid large arterial "
-        "intersections.",
-        f"- Motorway share rises from {s0['motorway share']:.0%} to {s1['motorway share']:.0%}. "
-        "Motorway risk is a per-km base rate that is low next to arterial intersections, and "
-        "most 400-series highways in Toronto are patrolled by the OPP, so TPS data undercounts "
-        "their crashes. Some safest routes take long motorway detours as a result (worst "
-        "example below: Union Station to Yorkdale).",
-        "- Risk is expected crashes per year at the locations on a route, with no traffic "
-        "volume term, so a '% risk reduction' means the route avoids crash-prone places, not "
-        "that a driver's own crash probability falls by that much. Travel times are "
-        "free-flow, which flatters motorways further.",
+        "- Free-flow travel times flatter long freeway detours; congestion would cut them.",
+        "- Per-vehicle routing minimises the driver's own risk. It can still send traffic "
+        "through local streets when they are safer per vehicle, which shifts risk onto "
+        "pedestrians and residents there (a neighbourhood externality the cost does not "
+        "include).",
+        "- EB overpredicts the quietest intersections (lowest decile, reports/"
+        "model_comparison.md), so per-vehicle risk on quiet local streets is if anything too "
+        "high, which works against cut-throughs.",
         "",
         "## Pareto sweeps",
         "",
