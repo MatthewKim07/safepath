@@ -764,7 +764,7 @@
             "num_leaves": 63,
             "min_data_in_leaf": 200,
             "best_iteration": 3000,
-            "val_poisson": -3.407116178060045
+            "val_poisson": -3.4071161780600447
           }
         ],
         "best_params": {
@@ -871,6 +871,55 @@
         },
         "best_iteration": 390,
         "best_val_poisson": 0.1185914388782652
+      },
+      "lgbm_aadt": {
+        "feature_set": "aadt",
+        "target": "crash_count",
+        "n_features": 40,
+        "search": [
+          {
+            "num_leaves": 15,
+            "min_data_in_leaf": 50,
+            "best_iteration": 765,
+            "val_poisson": -3.4688397456432822
+          },
+          {
+            "num_leaves": 15,
+            "min_data_in_leaf": 200,
+            "best_iteration": 1630,
+            "val_poisson": -3.471918425695757
+          },
+          {
+            "num_leaves": 31,
+            "min_data_in_leaf": 50,
+            "best_iteration": 1998,
+            "val_poisson": -3.474940393688585
+          },
+          {
+            "num_leaves": 31,
+            "min_data_in_leaf": 200,
+            "best_iteration": 1295,
+            "val_poisson": -3.474037995763043
+          },
+          {
+            "num_leaves": 63,
+            "min_data_in_leaf": 50,
+            "best_iteration": 914,
+            "val_poisson": -3.4761244477046076
+          },
+          {
+            "num_leaves": 63,
+            "min_data_in_leaf": 200,
+            "best_iteration": 842,
+            "val_poisson": -3.474798371378259
+          }
+        ],
+        "best_params": {
+          "num_leaves": 63,
+          "min_data_in_leaf": 50
+        },
+        "best_iteration": 914,
+        "best_val_poisson": -3.4761244477046076
       }
     },
     "spatial_holdout": {

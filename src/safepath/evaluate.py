@@ -23,6 +23,7 @@ from safepath.data.report import BAR, GRID, SURFACE, TEXT, TEXT_MUTED
 from safepath.locations import markdown_table
 from safepath.models import lgbm
 from safepath.models.baselines import predict_baselines
+from safepath.models.eb import EB_PREDICTIONS
 from safepath.models.train import MODELS, SPATIAL_OOF, categories, load_table
 
 log = logging.getLogger(__name__)
@@ -118,6 +119,8 @@ def predictions(cfg: dict[str, Any], table: pd.DataFrame) -> pd.DataFrame:
         preds[name] = lgbm.predict(booster, rows, lgbm.FEATURE_SETS[feature_set], cats)
     oof = pd.read_parquet(models_dir / SPATIAL_OOF)
     rows = rows.join(preds)
+    eb = pd.read_parquet(Path(cfg["paths"]["processed_dir"]) / EB_PREDICTIONS)
+    rows = rows.merge(eb[["intersection_id", "year", "spf", "eb"]], on=["intersection_id", "year"])
     rows = rows.merge(
         oof[["intersection_id", "year", "pred"]].rename(
             columns={"pred": "lgbm_static_only_spatial"}
@@ -284,6 +287,7 @@ def run_evaluate(cfg: dict[str, Any]) -> dict[str, Any]:
     results["training"] = json.loads((models_dir / "training_summary.json").read_text())
     (reports / "metrics.json").write_text(json.dumps(results, indent=2))
     write_metrics_md(results, rows, reports / "metrics.md")
+    run_comparison(cfg, rows)
     log.info("wrote metrics for val and test")
     return results
 
@@ -380,3 +384,243 @@ def write_metrics_md(results: dict[str, Any], rows: pd.DataFrame, path: Path) ->
         "",
     ]
     path.write_text("\n".join(lines))
+
+
+# --------------------------------------------------------------------------- CP6 comparison
+
+COMPARE_MODELS = {
+    "baseline_persistence": "persistence (train-period mean)",
+    "baseline_prev3_mean": "prev-3 mean",
+    "lgbm_main": "LightGBM (CP3)",
+    "lgbm_aadt": "LightGBM + log AADT",
+    "spf": "SPF alone",
+    "eb": "Empirical Bayes",
+}
+HOTSPOT_MIN_AADT = 5_000  # entering vehicles per day
+
+
+def calibration_slope(y: np.ndarray, pred: np.ndarray) -> float:
+    """Slope of a Poisson regression of y on log(pred): 1 = calibrated, < 1 = predictions
+    too spread out, > 1 = too compressed."""
+    import statsmodels.api as sm
+
+    X = sm.add_constant(np.log(np.maximum(pred, DEVIANCE_FLOOR)))
+    return float(sm.GLM(y, X, family=sm.families.Poisson()).fit().params[1])
+
+
+def compare_split(rows: pd.DataFrame, seed: int) -> dict[str, Any]:
+    clean = rows[~rows["is_excluded"]]
+    y = clean["crash_count"].to_numpy(float)
+    preds = {m: clean[m].to_numpy(float) for m in COMPARE_MODELS}
+    vs_persistence = bootstrap(y, preds, "baseline_persistence", N_BOOT, seed)
+    vs_aadt = bootstrap(y, preds, "lgbm_aadt", N_BOOT, seed)  # same resamples (same seed)
+    out: dict[str, Any] = {"n": len(clean), "models": {}}
+    for m, p in preds.items():
+        out["models"][m] = {
+            **point_metrics(y, p),
+            **vs_persistence[m],
+            "calibration_slope": calibration_slope(y, p),
+        }
+        if m != "lgbm_aadt":
+            out["models"][m]["vs_lgbm_aadt"] = {
+                k: v for k, v in vs_aadt[m].items() if "diff_vs_ref" in k
+            }
+    return out
+
+
+def comparison_table(block: dict[str, Any]) -> pd.DataFrame:
+    rows = []
+    for m, label in COMPARE_MODELS.items():
+        r = block["models"][m]
+        rows.append(
+            {
+                "model": label,
+                "Spearman [95% CI]": _fmt_ci(r, "spearman"),
+                "PR-AUC": r["pr_auc"],
+                "recall@1%": r["recall_top1"],
+                "recall@5% [95% CI]": _fmt_ci(r, "recall_top5"),
+                "Poisson dev.": r["poisson_deviance"],
+                "mean pred / obs": r["mean_pred"] / r["mean_obs"],
+                "calibration slope": r["calibration_slope"],
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def paired_table(block: dict[str, Any]) -> pd.DataFrame:
+    def fmt(d: dict[str, Any], metric: str) -> str:
+        lo, hi = d[f"{metric}_diff_vs_ref_ci"]
+        return f"{d[f'{metric}_diff_vs_ref']:+.3f} [{lo:+.3f}, {hi:+.3f}]"
+
+    eb = block["models"]["eb"]
+    aadt = block["models"]["lgbm_aadt"]
+    rows = [
+        {"comparison": "EB - persistence", "Spearman": fmt(eb, "spearman"),
+         "recall@5%": fmt(eb, "recall_top5")},
+        {"comparison": "EB - LightGBM + AADT", "Spearman": fmt(eb["vs_lgbm_aadt"], "spearman"),
+         "recall@5%": fmt(eb["vs_lgbm_aadt"], "recall_top5")},
+        {"comparison": "LightGBM + AADT - persistence", "Spearman": fmt(aadt, "spearman"),
+         "recall@5%": fmt(aadt, "recall_top5")},
+        {"comparison": "LightGBM (CP3) - LightGBM + AADT",
+         "Spearman": fmt(block["models"]["lgbm_main"]["vs_lgbm_aadt"], "spearman"),
+         "recall@5%": fmt(block["models"]["lgbm_main"]["vs_lgbm_aadt"], "recall_top5")},
+    ]  # fmt: skip
+    return pd.DataFrame(rows)
+
+
+def rate_hotspots(cfg: dict[str, Any]) -> pd.DataFrame:
+    """Top 20 clean intersections by 2026 EB expected crashes per million entering
+    vehicles, among those with at least HOTSPOT_MIN_AADT entering vehicles a day."""
+    from safepath.features.labels import LABELS
+    from safepath.graph import INTERSECTIONS
+    from safepath.models.volume import AADT_INTERSECTIONS
+
+    processed = Path(cfg["paths"]["processed_dir"])
+    eb = pd.read_parquet(processed / EB_PREDICTIONS)
+    eb = eb[eb["year"] == 2026].set_index("intersection_id")
+    aadt = pd.read_parquet(processed / AADT_INTERSECTIONS).set_index("intersection_id")
+    labels = pd.read_parquet(processed / LABELS)
+    excluded = labels.groupby("intersection_id")["is_excluded"].any()
+    recent = (
+        labels[labels["year"].between(2021, 2025)].groupby("intersection_id")["crash_count"].mean()
+    )
+    names = pd.read_parquet(processed / INTERSECTIONS).set_index("intersection_id")["street_names"]
+    df = pd.DataFrame(
+        {
+            "intersection": names.reindex(eb.index).replace("", "(unnamed)"),
+            "class combo": aadt["class_combo"].reindex(eb.index),
+            "EB crashes/yr (2026)": eb["eb"],
+            "observed/yr 2021-25": recent.reindex(eb.index),
+            "entering AADT": aadt["aadt"].reindex(eb.index),
+            "AADT source": aadt["source"].reindex(eb.index),
+        }
+    )
+    df["EB per MEV"] = df["EB crashes/yr (2026)"] / (df["entering AADT"] * 365 / 1e6)
+    df["rank by EB count"] = df["EB crashes/yr (2026)"].rank(ascending=False).astype(int)
+    df = df[~excluded.reindex(df.index).fillna(False) & (df["entering AADT"] >= HOTSPOT_MIN_AADT)]
+    return df.sort_values("EB per MEV", ascending=False).head(20)
+
+
+def plot_comparison_calibration(rows: pd.DataFrame, path: Path) -> None:
+    clean = rows[~rows["is_excluded"] & (rows["split"] == "test")]
+    series = [("baseline_persistence", ORANGE), ("lgbm_aadt", BAR), ("spf", TEXT_MUTED),
+              ("eb", AQUA)]  # fmt: skip
+    fig, ax = plt.subplots(figsize=(6.5, 5), facecolor=SURFACE, layout="constrained")
+    ax.set_facecolor(SURFACE)
+    top = 0.0
+    for model, color in series:
+        dec = pd.qcut(clean[model].rank(method="first"), 10, labels=False)
+        g = clean.groupby(dec).agg(pred=(model, "mean"), obs=("crash_count", "mean"))
+        ax.plot(g["pred"], g["obs"], marker="o", markersize=5, linewidth=2, color=color,
+                label=COMPARE_MODELS[model])  # fmt: skip
+        top = max(top, g["pred"].max(), g["obs"].max())
+    ax.plot([0.01, top * 1.2], [0.01, top * 1.2], color=GRID, linewidth=1, linestyle="--",
+            label="perfect calibration")  # fmt: skip
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_title("Test 2025: mean observed vs predicted crashes by decile", loc="left",
+                 fontsize=10, color=TEXT)  # fmt: skip
+    ax.set_xlabel("mean predicted crashes", fontsize=9, color=TEXT_MUTED)
+    ax.set_ylabel("mean observed crashes", fontsize=9, color=TEXT_MUTED)
+    ax.tick_params(colors=TEXT_MUTED, labelsize=8)
+    ax.grid(color=GRID, linewidth=0.6)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.legend(fontsize=8, frameon=False, labelcolor=TEXT)
+    fig.savefig(path, dpi=150, facecolor=SURFACE)
+    plt.close(fig)
+
+
+def run_comparison(cfg: dict[str, Any], rows: pd.DataFrame) -> dict[str, Any]:
+    results = {
+        split: compare_split(rows[rows["split"] == split], seed=21 + i)
+        for i, split in enumerate(["val", "test"])
+    }
+    reports, figures = Path(cfg["paths"]["reports_dir"]), Path(cfg["paths"]["figures_dir"])
+    plot_comparison_calibration(rows, figures / "calibration_cp6.png")
+    hot = rate_hotspots(cfg)
+    (reports / "model_comparison.json").write_text(json.dumps(results, indent=2))
+    write_comparison_md(results, hot, reports / "model_comparison.md")
+    return results
+
+
+def comparison_verdict(t: dict[str, Any]) -> list[str]:
+    m = t["models"]
+    best_rank = max(COMPARE_MODELS, key=lambda k: m[k]["spearman"])
+    best_recall = max(COMPARE_MODELS, key=lambda k: m[k]["recall_top5"])
+    best_dev = min(COMPARE_MODELS, key=lambda k: m[k]["poisson_deviance"])
+    best_slope = min(COMPARE_MODELS, key=lambda k: abs(m[k]["calibration_slope"] - 1))
+    best_level = min(COMPARE_MODELS, key=lambda k: abs(m[k]["mean_pred"] / m[k]["mean_obs"] - 1))
+    eb = m["eb"]
+    # the bootstrap stored CP3 LightGBM minus LightGBM + AADT; flip it to read as a gain
+    d = m["lgbm_main"]["vs_lgbm_aadt"]
+    flipped = {
+        "spearman_diff_vs_ref": -d["spearman_diff_vs_ref"],
+        "spearman_diff_vs_ref_ci": [-x for x in d["spearman_diff_vs_ref_ci"][::-1]],
+    }
+    return [
+        f"- Ranking (Spearman): best is {COMPARE_MODELS[best_rank]} "
+        f"({m[best_rank]['spearman']:.3f}); top-5% recall: best is "
+        f"{COMPARE_MODELS[best_recall]} ({m[best_recall]['recall_top5']:.3f}).",
+        f"- Calibration: lowest Poisson deviance is {COMPARE_MODELS[best_dev]} "
+        f"({m[best_dev]['poisson_deviance']:.3f}); calibration slope closest to 1 is "
+        f"{COMPARE_MODELS[best_slope]} ({m[best_slope]['calibration_slope']:.3f}); total "
+        f"predicted / observed closest to 1 is {COMPARE_MODELS[best_level]} "
+        f"({m[best_level]['mean_pred'] / m[best_level]['mean_obs']:.3f}, LightGBM + AADT "
+        f"{m['lgbm_aadt']['mean_pred'] / m['lgbm_aadt']['mean_obs']:.3f}).",
+        "- EB vs persistence: "
+        + _verdict(eb, "spearman", "Spearman")
+        + "; "
+        + _verdict(eb, "recall_top5", "recall@5%")
+        + ".",
+        "- EB vs LightGBM + AADT: "
+        + _verdict(eb["vs_lgbm_aadt"], "spearman", "Spearman")
+        + "; "
+        + _verdict(eb["vs_lgbm_aadt"], "recall_top5", "recall@5%")
+        + ".",
+        "- LightGBM + AADT vs CP3 LightGBM: " + _verdict(flipped, "spearman", "Spearman") + ".",
+    ]
+
+
+def write_comparison_md(results: dict[str, Any], hot: pd.DataFrame, path: Path) -> None:
+    lines = [
+        "# Model comparison (CP6)",
+        "",
+        "Clean intersections, same metrics and bootstrap as reports/metrics.md "
+        f"({N_BOOT} resamples of intersections; paired differences use the same resamples). "
+        "`SPF alone` is the grouped NB2 SPF with the previous year's citywide level; "
+        "`Empirical Bayes` blends it with each intersection's previous 5 years "
+        "(reports/spf.md, reports/eb.md). `LightGBM + log AADT` is the CP3 model plus "
+        "log entering, major-road and minor-road AADT. Calibration slope: Poisson "
+        "regression of observed on log(predicted); 1 is ideal, below 1 means the "
+        "predictions are too spread out.",
+        "",
+    ]
+    for split, year in (("val", 2024), ("test", 2025)):
+        r = results[split]
+        lines += [
+            f"## {split.capitalize()} {year} ({r['n']:,} clean intersections)",
+            "",
+            markdown_table(comparison_table(r), floats="{:.3f}"),
+            "",
+            "Paired differences:",
+            "",
+            markdown_table(paired_table(r)),
+            "",
+        ]
+    lines += [
+        "![Calibration by decile, test 2025](figures/calibration_cp6.png)",
+        "",
+        "## Reading (test 2025)",
+        "",
+        *comparison_verdict(results["test"]),
+        "",
+        "## Rate hotspots: EB expected crashes per million entering vehicles (2026)",
+        "",
+        f"Clean intersections with at least {HOTSPOT_MIN_AADT:,} entering vehicles a day. "
+        "`rank by EB count` is the intersection's rank among all intersections by EB "
+        "expected crashes per year.",
+        "",
+        markdown_table(hot, floats="{:,.2f}"),
+    ]
+    path.write_text("\n".join(lines) + "\n")
