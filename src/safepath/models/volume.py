@@ -74,7 +74,7 @@ PARAMS = {
 }
 EDGE_COLUMNS = [
     "u", "v", "key", "segment_id", "highway", "aadt_segment", "dir_share", "aadt_dir", "source",
-    "mto_hwy", "mto_lhrs",
+    "mto_hwy", "mto_lhrs", "aadt_dir_model",
 ]  # fmt: skip
 SEGMENT_CLASSES = [
     "motorway", "motorway_link", "primary", "secondary", "tertiary", "unclassified", "residential",
@@ -260,6 +260,7 @@ def lane_scaled_expressways(
     per_lane = float((mto["aadt_dir"] / mto["lanes_n"]).median())
     city = (out["highway"] == "motorway") & out["mto_lhrs"].isna()
     model_dir = out.loc[city, "aadt_dir"].copy()
+    out["aadt_dir_model"] = np.where(city, out["aadt_dir"], np.nan)  # kept for sensitivity
     out.loc[city, "aadt_dir"] = per_lane * out.loc[city, "lanes_n"]
     out.loc[city, "aadt"] = out.loc[city, "aadt_dir"] / out.loc[city, "dir_share"]
     out.loc[city, "source"] = "lane-scaled"
