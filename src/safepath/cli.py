@@ -20,6 +20,7 @@ from safepath.features.build import run_features
 from safepath.graph import run_graph
 from safepath.locations import run_locations
 from safepath.models.train import run_train
+from safepath.models.volume_report import run_volume_model
 from safepath.risk import run_score
 from safepath.routing import run_routing
 from safepath.snap_report import run_snap_report
@@ -56,6 +57,7 @@ STEPS: dict[str, tuple[str, Callable[[dict], None]]] = {
     "route": ("Calibrate k and report the routing trade-off", run_routing),
     "volumes": ("Download Toronto traffic counts, expand to AADT, match to the graph", run_volumes),
     "mto": ("Map MTO 400-series AADT and collision rates onto the graph", run_mto),
+    "volume-model": ("Predict AADT for every intersection and edge", run_volume_model),
     "app": ("Launch the Streamlit routing app", run_app),
 }
 PIPELINE = [
@@ -73,6 +75,7 @@ PIPELINE = [
     "route",
     "volumes",
     "mto",
+    "volume-model",
 ]
 
 
