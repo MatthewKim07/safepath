@@ -362,6 +362,12 @@ def write_report(cfg: dict[str, Any], r: dict[str, Any], path: Path) -> None:
         f"- SVC studies not usable as segment AADT: {int(s['one_direction_on_two_way'].sum()):,} "
         "count one direction of a two-way street (raw files show a single direction); they "
         "are kept in the history but not used.",
+        f"- {int(s['expressway_mainline'].sum())} SVC studies on expressway mainline "
+        "(Gardiner, DVP, 400-series, Allen, Black Creek) are not used either: tubes cannot "
+        "span an expressway, and the same Gardiner location reads 4k one year and 118k "
+        "another (one lane or one direction vs the full cross-section). Expressway volumes "
+        "come from MTO for the 400-series and a lane-scaled estimate for the city "
+        "expressways (reports/volume_model.md).",
         "",
         "## Coverage",
         "",

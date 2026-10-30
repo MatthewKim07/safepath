@@ -185,3 +185,34 @@ def test_latest_by_unit_keeps_recent_and_noncovid():
     assert out.loc[1, "latest_noncovid_year"] == 2019
     assert out.loc[1, "latest_noncovid_aadt"] == 12_000
     assert out.loc[1, "n_counts"] == 3
+
+
+def test_ramp_counts_never_match_expressway_mainline():
+    seg = gpd.GeoDataFrame(
+        {
+            "segment_id": [20, 21],
+            "name": ["Gardiner Expressway", None],
+            "highway": ["motorway", "motorway_link"],
+            "oneway": [True, True],
+        },
+        geometry=[
+            LineString([(630000, 4840000), (630300, 4840000)]),
+            LineString([(630000, 4840010), (630300, 4840030)]),
+        ],
+        crs=CRS,
+    )
+    lon, lat = _to_lonlat([630100.0, 630100.0, 630100.0], [4840002.0] * 3)
+    svc = pd.DataFrame(
+        {
+            "location_name": [
+                "Gardiner W / Sherbourne Ramp",  # a ramp: mainline is 2 m away, link 15 m
+                "Gardiner Expy E (id: 20044024)",  # named mainline count
+                "Unnamed Rd: A - B",  # no name match: never the mainline
+            ],
+            "lon": lon,
+            "lat": lat,
+        }
+    )
+    out = aadt.match_svc(svc, seg, max_m=40, unnamed_max_m=15)
+    assert out["segment_id"].tolist()[:2] == [21, 20]
+    assert out.loc[2, "segment_id"] == 21

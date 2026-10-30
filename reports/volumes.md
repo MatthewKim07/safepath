@@ -46,27 +46,27 @@ TMC: `AADT = entering * R / D[dow] * W / M[month]`. SVC: `AADT = weekday daily *
 
 | era | group | daytype | window | R | R_p10 | R_p90 | count_days | counts |
 |---|---|---|---|---:|---:|---:|---:|---:|
-| 2020on | major | weekday | 8R | 2.070 | 1.886 | 2.323 | 2,739 | 879 |
-| 2020on | major | weekday | 8S | 2.027 | 1.834 | 2.314 | 2,739 | 879 |
-| 2020on | major | weekday | 14 | 1.234 | 1.155 | 1.350 | 2,739 | 879 |
-| 2020on | major | weekend | 8R | 2.285 | 2.024 | 2.680 | 321 | 161 |
-| 2020on | major | weekend | 8S | 2.263 | 2.014 | 2.686 | 321 | 161 |
-| 2020on | major | weekend | 14 | 1.361 | 1.228 | 1.582 | 321 | 161 |
+| 2020on | major | weekday | 8R | 2.070 | 1.886 | 2.323 | 2,726 | 876 |
+| 2020on | major | weekday | 8S | 2.027 | 1.834 | 2.314 | 2,726 | 876 |
+| 2020on | major | weekday | 14 | 1.234 | 1.155 | 1.351 | 2,726 | 876 |
+| 2020on | major | weekend | 8R | 2.284 | 2.024 | 2.686 | 317 | 159 |
+| 2020on | major | weekend | 8S | 2.262 | 2.013 | 2.687 | 317 | 159 |
+| 2020on | major | weekend | 14 | 1.362 | 1.227 | 1.582 | 317 | 159 |
 | 2020on | minor | weekday | 8R | 1.928 | 1.685 | 2.151 | 11,429 | 3,896 |
 | 2020on | minor | weekday | 8S | 1.861 | 1.598 | 2.092 | 11,429 | 3,896 |
 | 2020on | minor | weekday | 14 | 1.176 | 1.088 | 1.255 | 11,429 | 3,896 |
 | 2020on | minor | weekend | 8R | 2.232 | 1.882 | 2.608 | 544 | 295 |
 | 2020on | minor | weekend | 8S | 2.208 | 1.854 | 2.540 | 544 | 295 |
 | 2020on | minor | weekend | 14 | 1.332 | 1.159 | 1.492 | 544 | 295 |
-| pre2020 | major | weekday | 8R | 2.008 | 1.856 | 2.175 | 3,089 | 775 |
-| pre2020 | major | weekday | 8S | 1.969 | 1.812 | 2.137 | 3,089 | 775 |
-| pre2020 | major | weekday | 14 | 1.212 | 1.150 | 1.293 | 3,089 | 775 |
+| pre2020 | major | weekday | 8R | 2.008 | 1.856 | 2.175 | 3,086 | 774 |
+| pre2020 | major | weekday | 8S | 1.969 | 1.813 | 2.137 | 3,086 | 774 |
+| pre2020 | major | weekday | 14 | 1.212 | 1.150 | 1.293 | 3,086 | 774 |
 | pre2020 | major | weekend | 8R | 2.173 | 1.976 | 2.529 | 921 | 451 |
 | pre2020 | major | weekend | 8S | 2.145 | 1.950 | 2.523 | 921 | 451 |
 | pre2020 | major | weekend | 14 | 1.311 | 1.216 | 1.503 | 921 | 451 |
-| pre2020 | minor | weekday | 8R | 1.905 | 1.652 | 2.109 | 783 | 212 |
-| pre2020 | minor | weekday | 8S | 1.860 | 1.618 | 2.069 | 783 | 212 |
-| pre2020 | minor | weekday | 14 | 1.169 | 1.093 | 1.240 | 783 | 212 |
+| pre2020 | minor | weekday | 8R | 1.905 | 1.653 | 2.109 | 786 | 213 |
+| pre2020 | minor | weekday | 8S | 1.860 | 1.618 | 2.069 | 786 | 213 |
+| pre2020 | minor | weekday | 14 | 1.169 | 1.093 | 1.240 | 786 | 213 |
 | pre2020 | minor | weekend | 8R | 2.011 | 1.855 | 2.141 | 150 | 65 |
 | pre2020 | minor | weekend | 8S | 1.976 | 1.807 | 2.083 | 150 | 65 |
 | pre2020 | minor | weekend | 14 | 1.229 | 1.159 | 1.289 | 150 | 65 |
@@ -117,8 +117,9 @@ The window -> day step is accurate to a few percent. The month and day-of-week s
 ## Matching to the graph
 
 - **TMC -> consolidated intersection** (within 40 m; among the 5 nearest, the one sharing the most street names): 29,789 of 30,059 intersection TMCs matched (99.1%) to 5,935 intersections. Match distance median 2.0 m, p95 9.5 m. 96.0% share at least two street names with the OSM intersection; 14 counts share none (unnamed OSM ramps). Unmatched counts are lanes, trails, and private roads with no drivable OSM intersection nearby (138 locations; nearest OSM intersection median 86 m).
-- **SVC -> undirected segment** (within 40 m with the counted street's name, else the nearest within 15 m): 98.3% matched, 93.2% by name. Unmatched: laneways and park roads outside the drive graph.
-- SVC studies not usable as segment AADT: 613 count one direction of a two-way street (raw files show a single direction); they are kept in the history but not used.
+- **SVC -> undirected segment** (within 40 m with the counted street's name, else the nearest within 15 m): 98.2% matched, 93.8% by name. Unmatched: laneways and park roads outside the drive graph.
+- SVC studies not usable as segment AADT: 614 count one direction of a two-way street (raw files show a single direction); they are kept in the history but not used.
+- 78 SVC studies on expressway mainline (Gardiner, DVP, 400-series, Allen, Black Creek) are not used either: tubes cannot span an expressway, and the same Gardiner location reads 4k one year and 118k another (one lane or one direction vs the full cross-section). Expressway volumes come from MTO for the 400-series and a lane-scaled estimate for the city expressways (reports/volume_model.md).
 
 ## Coverage
 
@@ -142,15 +143,15 @@ Segments (undirected) with a usable SVC count:
 
 | highway | segments | km | counted segments | % km counted |
 |---|---:|---:|---:|---:|
-| all | 41,070 | 6268.3 | 13,407 | 41.3 |
-| residential | 23,711 | 3551.5 | 6,686 | 35.0 |
-| secondary | 7,393 | 900.1 | 2,847 | 58.7 |
+| all | 41,070 | 6268.3 | 13,364 | 40.7 |
+| residential | 23,711 | 3551.5 | 6,687 | 35.0 |
+| secondary | 7,393 | 900.1 | 2,849 | 58.7 |
 | tertiary | 5,831 | 792.9 | 2,597 | 60.9 |
-| motorway | 442 | 328.2 | 44 | 11.5 |
-| primary | 1,772 | 229.3 | 756 | 55.6 |
-| motorway_link | 644 | 227.9 | 244 | 43.0 |
+| motorway | 442 | 328.2 | 0 | 0.0 |
+| primary | 1,772 | 229.3 | 755 | 55.4 |
+| motorway_link | 644 | 227.9 | 245 | 43.1 |
 | unclassified | 833 | 201.2 | 181 | 33.1 |
-| secondary_link | 222 | 15.1 | 30 | 27.9 |
+| secondary_link | 222 | 15.1 | 28 | 27.1 |
 | primary_link | 105 | 10.3 | 19 | 36.4 |
 | busway | 20 | 6.0 | 0 | 0.0 |
 | living_street | 45 | 3.8 | 1 | 2.0 |
@@ -162,13 +163,13 @@ Most recent count year per counted unit. History is kept for every count (data/p
 
 | latest count year | intersections | segments |
 |---|---:|---:|
-| before 2000 | 125 | 205 |
-| 2000-09 | 702 | 3,025 |
-| 2010-14 | 378 | 4,654 |
-| 2015-19 | 786 | 1,780 |
-| 2020-21 | 416 | 938 |
-| 2022-23 | 1,250 | 1,143 |
-| 2024-26 | 2,278 | 1,662 |
+| before 2000 | 125 | 199 |
+| 2000-09 | 702 | 3,006 |
+| 2010-14 | 378 | 4,644 |
+| 2015-19 | 786 | 1,777 |
+| 2020-21 | 416 | 935 |
+| 2022-23 | 1,250 | 1,142 |
+| 2024-26 | 2,278 | 1,661 |
 
 7.0% of counted intersections have their most recent count in 2020-21, when volumes were depressed; `latest_noncovid_*` columns keep the latest count outside those years.
 
@@ -178,32 +179,31 @@ Intersections, entering AADT:
 
 | class combo | n | p10 | median | p90 | max |
 |---|---:|---:|---:|---:|---:|
-| arterial x arterial | 356 | 21,046 | 40,274 | 62,409 | 82,342 |
-| highway x arterial | 80 | 22,370 | 39,191 | 64,737 | 113,004 |
-| highway x local | 8 | 7,608 | 34,867 | 53,783 | 65,614 |
-| arterial x collector | 646 | 15,698 | 27,377 | 43,858 | 78,604 |
-| highway x collector | 24 | 15,330 | 25,595 | 64,347 | 76,488 |
-| highway x highway | 2 | 13,703 | 25,285 | 36,866 | 39,762 |
-| arterial x local | 2,260 | 12,616 | 22,841 | 37,961 | 70,839 |
+| arterial x arterial | 356 | 21,044 | 40,274 | 62,417 | 82,349 |
+| highway x arterial | 80 | 22,366 | 39,189 | 64,742 | 112,983 |
+| highway x local | 8 | 7,608 | 34,865 | 53,778 | 65,601 |
+| arterial x collector | 646 | 15,698 | 27,372 | 43,856 | 78,611 |
+| highway x collector | 24 | 15,332 | 25,597 | 64,338 | 76,495 |
+| highway x highway | 2 | 13,704 | 25,287 | 36,870 | 39,765 |
+| arterial x local | 2,260 | 12,614 | 22,842 | 37,960 | 70,836 |
 | collector x collector | 199 | 4,418 | 11,486 | 21,235 | 37,087 |
 | collector x local | 1,065 | 3,214 | 9,489 | 17,169 | 36,661 |
-| local x local | 1,295 | 736 | 1,918 | 5,495 | 33,857 |
+| local x local | 1,295 | 736 | 1,918 | 5,495 | 33,856 |
 
 Segments, two-way AADT:
 
 | highway | n | p10 | median | p90 | max |
 |---|---:|---:|---:|---:|---:|
-| motorway | 44 | 4,329 | 26,433 | 62,492 | 108,319 |
-| primary | 756 | 9,998 | 16,635 | 31,590 | 62,790 |
-| secondary | 2,847 | 7,586 | 14,995 | 27,468 | 68,922 |
-| motorway_link | 244 | 1,614 | 7,461 | 18,020 | 65,055 |
+| primary | 755 | 9,991 | 16,641 | 31,592 | 62,790 |
+| secondary | 2,849 | 7,565 | 14,995 | 27,464 | 68,922 |
+| motorway_link | 245 | 1,617 | 7,446 | 18,152 | 65,055 |
 | tertiary | 2,597 | 1,518 | 4,729 | 11,491 | 23,112 |
 | tertiary_link | 2 | 1,704 | 4,723 | 7,742 | 8,497 |
 | primary_link | 19 | 1,422 | 4,371 | 10,702 | 20,755 |
-| secondary_link | 30 | 661 | 3,204 | 9,301 | 21,657 |
+| secondary_link | 28 | 610 | 3,282 | 9,511 | 21,657 |
 | unclassified | 181 | 765 | 2,486 | 8,005 | 55,336 |
 | living_street | 1 | 1,068 | 1,068 | 1,068 | 1,068 |
-| residential | 6,686 | 261 | 878 | 2,687 | 30,538 |
+| residential | 6,687 | 261 | 878 | 2,690 | 49,046 |
 
 ## Oddities
 
@@ -211,16 +211,16 @@ Highest entering AADT (most recent count):
 
 | intersection | class combo | latest_year | latest_aadt | n_counts |
 |---|---|---|---:|---:|
-| Steeles Avenue East | highway x arterial | 2023 | 113,004 | 17 |
-| Bayview Avenue / Sheppard Avenue East | arterial x arterial | 2024 | 82,342 | 27 |
-| Keele Street / Steeles Avenue West | arterial x arterial | 2025 | 81,652 | 24 |
-| Ellesmere Road / Warden Avenue | arterial x arterial | 2022 | 80,551 | 28 |
-| Ellesmere Road / Kennedy Road | arterial x arterial | 2025 | 80,548 | 31 |
-| Lake Shore Boulevard West / Windermere Avenue | arterial x collector | 2025 | 78,604 | 14 |
-| Bayview Avenue / Steeles Avenue East | arterial x arterial | 2025 | 78,032 | 27 |
-| Don Mills Road / York Mills Road | arterial x arterial | 2023 | 76,594 | 23 |
-| Steeles Avenue East / Warden Avenue | arterial x arterial | 2023 | 76,514 | 24 |
-| Kennedy Road / William Kitchen Road | highway x collector | 2018 | 76,488 | 13 |
+| Steeles Avenue East | highway x arterial | 2023 | 112,983 | 17 |
+| Bayview Avenue / Sheppard Avenue East | arterial x arterial | 2024 | 82,349 | 27 |
+| Keele Street / Steeles Avenue West | arterial x arterial | 2025 | 81,648 | 24 |
+| Ellesmere Road / Kennedy Road | arterial x arterial | 2025 | 80,545 | 31 |
+| Ellesmere Road / Warden Avenue | arterial x arterial | 2022 | 80,536 | 28 |
+| Lake Shore Boulevard West / Windermere Avenue | arterial x collector | 2025 | 78,611 | 14 |
+| Bayview Avenue / Steeles Avenue East | arterial x arterial | 2025 | 78,029 | 27 |
+| Don Mills Road / York Mills Road | arterial x arterial | 2023 | 76,580 | 23 |
+| Steeles Avenue East / Warden Avenue | arterial x arterial | 2023 | 76,500 | 24 |
+| Kennedy Road / William Kitchen Road | highway x collector | 2018 | 76,495 | 13 |
 
 - 5 counted local x local intersections exceed 20,000 entering AADT (OSM tags a busy road as residential, or the TMC sits at a consolidated cluster that OSM classes differently).
 - 37 of 3,087 intersections counted at least twice since 2010 have counts more than 3x apart (construction detours, network changes, or a different count location under the same centreline id).

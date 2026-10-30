@@ -61,7 +61,7 @@ ABBREV = {
     "pkwy": "parkway", "hwy": "highway", "pl": "place", "ln": "lane", "trl": "trail",
     "gt": "gate", "sq": "square", "ter": "terrace", "terr": "terrace", "cir": "circle",
     "gdns": "gardens", "pk": "park", "expy": "expressway", "e": "east", "w": "west",
-    "n": "north", "s": "south", "mt": "mount",
+    "n": "north", "s": "south", "mt": "mount", "collectors": "collector",
 }  # fmt: skip
 GENERIC = {
     "avenue", "road", "street", "boulevard", "drive", "crescent", "court", "parkway",
@@ -125,7 +125,7 @@ def match_tmc(
 
 def counted_street(location_name: str) -> str:
     """'Danforth Ave: Moberly Ave - Woodbine Ave' -> 'Danforth Ave'; also 'X to Y' -> 'X'."""
-    name = str(location_name)
+    name = re.sub(r"\(.*?\)", " ", str(location_name)).strip()  # "(id: 123)" has a colon
     if ":" in name:
         return name.split(":")[0]
     return re.split(r"\s+(?:to|-)\s+", name)[0]
@@ -135,7 +135,9 @@ def match_svc(
     svc: pd.DataFrame, segments: gpd.GeoDataFrame, max_m: float, unnamed_max_m: float
 ) -> pd.DataFrame:
     """Each SVC -> nearest undirected segment within `max_m` whose name matches the counted
-    street; failing that, the nearest segment if it is within `unnamed_max_m`."""
+    street; failing that, the nearest segment if it is within `unnamed_max_m`. Expressway
+    mainline (`highway=motorway`) is only matched by name and never to a ramp count: ramps
+    merge into the mainline, so a ramp tube is often within metres of it."""
     pts = project_points(svc, segments.crs).reset_index(names="row")
     seg = segments[["segment_id", "name", "highway", "oneway", "geometry"]].reset_index(drop=True)
     pi, si = seg.sindex.query(pts.geometry.buffer(max_m), predicate="intersects")
@@ -145,6 +147,9 @@ def match_svc(
     want = svc["location_name"].map(lambda n: street_key(counted_street(n)))
     seg_key = seg["name"].map(lambda n: street_key(n) if isinstance(n, str) else "")
     cand["name_ok"] = want.reindex(cand["row"]).to_numpy() == seg_key.to_numpy()[cand["seg_pos"]]
+    mainline = seg["highway"].to_numpy()[cand["seg_pos"]] == "motorway"
+    is_ramp = want.str.contains(r"\bramp\b").reindex(cand["row"]).to_numpy()
+    cand = cand[~mainline | (cand["name_ok"].to_numpy() & ~is_ramp)]
     cand = cand.sort_values(["row", "name_ok", "dist"], ascending=[True, False, True])
     best = cand.drop_duplicates("row").set_index("row")
     best = best[best["name_ok"] | (best["dist"] <= unnamed_max_m)]
@@ -390,8 +395,11 @@ def svc_aadt(svc: pd.DataFrame, D: pd.DataFrame, W: float, M: pd.DataFrame) -> p
     out["aadt"] = weekday * W / out["M"]
     # a one-direction count on a two-way street misses the other direction's traffic
     out["one_direction_on_two_way"] = (out["n_directions"] == 1) & ~out["seg_oneway"]
+    # City tubes on expressway mainline give one direction or one lane as often as the full
+    # cross-section (Gardiner counts range 4k-118k); the 400-series use MTO AADT instead
+    out["expressway_mainline"] = out["highway"].eq("motorway")
     out["usable"] = out["segment_id"].notna() & out["aadt"].gt(0)
-    out["usable"] &= ~out["one_direction_on_two_way"]
+    out["usable"] &= ~out["one_direction_on_two_way"] & ~out["expressway_mainline"]
     return out
 
 
