@@ -25,6 +25,7 @@ HISTORY_FEATURES = [
     "prev1_crash_share", "prev1_severe_share", "prev3_crash_share_mean",
     "prev3_severe_share_mean", "years_since_last_crash", "covid_in_window",
 ]  # fmt: skip
+AADT_FEATURES = ["log_aadt_entering", "log_aadt_major", "log_aadt_minor"]  # CP5 volumes
 COORD_FEATURES = ["x", "y"]  # ablation only: lets the model memorise locations
 CATEGORICAL = ["class_combo"]
 
@@ -32,6 +33,7 @@ FEATURE_SETS = {
     "main": STATIC_FEATURES + HISTORY_FEATURES,
     "static_only": STATIC_FEATURES,
     "with_coords": STATIC_FEATURES + HISTORY_FEATURES + COORD_FEATURES,
+    "aadt": STATIC_FEATURES + HISTORY_FEATURES + AADT_FEATURES,
 }
 
 BASE_PARAMS = {

@@ -23,10 +23,10 @@ from safepath.features.roads import class_rank
 from safepath.features.static import TRUTHY, count_within, first_number
 from safepath.graph import EDGE_MAP, NODE_MAP, PROJ_GRAPH, SEGMENTS
 from safepath.locations import MOTORWAY_CLASSES
-from safepath.routing import PRESETS, Router
 
 EDGE_CENTRALITY = "edge_centrality.parquet"
 INTERSECTION_EXPOSURE = "intersection_exposure.parquet"
+DOWNTOWN = (43.6453, -79.3806)  # Union Station
 # global: random sources, every destination; local: destinations within 5 minutes
 CENTRALITY = {"bt_global": {"n_sources": 2000}, "bt_local": {"n_sources": 5000, "limit": 300}}
 
@@ -37,20 +37,22 @@ def edge_centrality(cfg: dict[str, Any]) -> pd.DataFrame:
     path = processed / EDGE_CENTRALITY
     if path.exists():
         return pd.read_parquet(path)
-    router = Router(ox.load_graphml(processed / PROJ_GRAPH))
-    out = pd.DataFrame(
-        {"u": router.nodes[router.u], "v": router.nodes[router.v], "key": router.key}
-    )
+    G = ox.load_graphml(processed / PROJ_GRAPH)
+    nodes = np.array(list(G.nodes))
+    index = {n: i for i, n in enumerate(nodes)}
+    rows = list(G.edges(keys=True, data="travel_time"))
+    u = np.array([index[r[0]] for r in rows])
+    v = np.array([index[r[1]] for r in rows])
+    travel_time = np.array([float(r[3]) for r in rows])
+    out = pd.DataFrame({"u": nodes[u], "v": nodes[v], "key": [r[2] for r in rows]})
     for name, kw in CENTRALITY.items():
-        out[name] = edge_betweenness(
-            router.u, router.v, router.travel_time, len(router.nodes), **kw
-        )
+        out[name] = edge_betweenness(u, v, travel_time, len(nodes), **kw)
     out.to_parquet(path, index=False)
     return out
 
 
 def downtown_xy(crs: str) -> tuple[float, float]:
-    lat, lon = PRESETS["Union Station"]
+    lat, lon = DOWNTOWN
     return Transformer.from_crs("EPSG:4326", crs, always_xy=True).transform(lon, lat)
 
 

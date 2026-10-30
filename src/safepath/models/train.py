@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from safepath.features.build import MODEL_TABLE
+from safepath.features.volume_features import INTERSECTION_EXPOSURE
 from safepath.graph import INTERSECTIONS
 from safepath.models import lgbm
 from safepath.models.baselines import fit_baselines
@@ -24,6 +25,7 @@ MODELS = {
     "lgbm_static_only": ("static_only", "crash_count"),
     "lgbm_with_coords": ("with_coords", "crash_count"),
     "lgbm_severe": ("main", "severe_count"),
+    "lgbm_aadt": ("aadt", "crash_count"),
 }
 
 
@@ -31,7 +33,17 @@ def load_table(cfg: dict[str, Any]) -> pd.DataFrame:
     processed = Path(cfg["paths"]["processed_dir"])
     table = pd.read_parquet(processed / MODEL_TABLE)
     xy = pd.read_parquet(processed / INTERSECTIONS, columns=["intersection_id", "x", "y"])
-    return table.merge(xy, on="intersection_id", how="left")
+    table = table.merge(xy, on="intersection_id", how="left")
+    expo = pd.read_parquet(processed / INTERSECTION_EXPOSURE)
+    expo = pd.DataFrame(
+        {
+            "intersection_id": expo["intersection_id"],
+            "log_aadt_entering": np.log(expo["entering_aadt"]),
+            "log_aadt_major": np.log(expo["major_aadt"]),
+            "log_aadt_minor": np.log(expo["minor_aadt"]),  # NaN with a single road
+        }
+    )
+    return table.merge(expo, on="intersection_id", how="left")
 
 
 def categories(table: pd.DataFrame) -> dict[str, list]:
