@@ -19,8 +19,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
-from scipy.sparse import csr_matrix
-from scipy.sparse.csgraph import floyd_warshall
+from scipy.sparse.csgraph import csgraph_from_dense, floyd_warshall
 
 U_TURN_DEG = 150.0
 U_TURN_PENALTY_S = 60.0
@@ -69,28 +68,33 @@ def internal_paths(
     ids = np.flatnonzero(internal)
     if len(ids) == 0:
         return paths
-    frame = pd.DataFrame({"e": ids, "j": junction[u[ids]], "a": u[ids], "b": v[ids], "tt": tt[ids]})
-    for _, g in frame.groupby("j"):
-        nodes = np.unique(np.r_[g["a"], g["b"]])
-        pos = {n: i for i, n in enumerate(nodes)}
-        best = g.sort_values("tt").drop_duplicates(["a", "b"])  # cheapest parallel edge
+    j = junction[u[ids]]
+    ids = ids[np.lexsort((tt[ids], j))]  # by junction, cheapest parallel edge first
+    bounds = np.flatnonzero(np.diff(junction[u[ids]])) + 1
+    for grp in np.split(ids, bounds):
+        a, b = u[grp], v[grp]
+        nodes = np.unique(np.r_[a, b])
+        ai, bi = np.searchsorted(nodes, a), np.searchsorted(nodes, b)
         n = len(nodes)
-        rows = best["a"].map(pos).to_numpy()
-        cols = best["b"].map(pos).to_numpy()
-        mat = csr_matrix((best["tt"].to_numpy() + 1e-9, (rows, cols)), shape=(n, n))
-        edge_at = {(r, c): e for r, c, e in zip(rows, cols, best["e"], strict=True)}
-        dist, pred = floyd_warshall(mat, directed=True, return_predecessors=True)
-        for i in range(n):
-            for j in range(n):
-                if i == j or not np.isfinite(dist[i, j]):
+        dense = np.full((n, n), np.inf)
+        edge_at = np.full((n, n), -1)
+        # assign in reverse so the cheapest of parallel edges is written last and wins
+        dense[ai[::-1], bi[::-1]] = tt[grp[::-1]] + 1e-9
+        edge_at[ai[::-1], bi[::-1]] = grp[::-1]
+        dist, pred = floyd_warshall(
+            csgraph_from_dense(dense, null_value=np.inf), directed=True, return_predecessors=True
+        )
+        for x in range(n):
+            for y in range(n):
+                if x == y or not np.isfinite(dist[x, y]):
                     continue
-                chain, cur = [], j
-                while cur != i:
-                    p = pred[i, cur]
-                    chain.append(edge_at[(p, cur)])
+                chain, cur = [], y
+                while cur != x:
+                    p = pred[x, cur]
+                    chain.append(int(edge_at[p, cur]))
                     cur = p
                 chain.reverse()
-                paths[(int(nodes[i]), int(nodes[j]))] = (
+                paths[(int(nodes[x]), int(nodes[y]))] = (
                     float(tt[chain].sum()),
                     float(risk[chain].sum()),
                     chain,
@@ -123,8 +127,9 @@ def build_movements(
     int_tt = np.zeros(len(pairs))
     int_risk = np.zeros(len(pairs))
     ok = same.copy()
+    a_arr, b_arr = pairs["a"].to_numpy(), pairs["b"].to_numpy()
     for i in np.flatnonzero(~same):
-        p = paths.get((int(pairs["a"].iat[i]), int(pairs["b"].iat[i])))
+        p = paths.get((int(a_arr[i]), int(b_arr[i])))
         if p is not None:
             int_tt[i], int_risk[i], ok[i] = p[0], p[1], True
     pairs, int_tt, int_risk = pairs[ok], int_tt[ok], int_risk[ok]
