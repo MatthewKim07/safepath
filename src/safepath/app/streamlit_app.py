@@ -6,7 +6,15 @@ import folium
 import streamlit as st
 from streamlit_folium import st_folium
 
-from safepath.app.data import RISK_BANDS, build_router, risk_layer, route_latlon, to_wgs84
+from safepath.app.data import (
+    LAYER_MEASURES,
+    LAYER_MIN_AADT,
+    RISK_BANDS,
+    build_router,
+    risk_layer,
+    route_latlon,
+    to_wgs84,
+)
 from safepath.routing import PRESETS, fastest_route, route_stats, safest_route
 
 MAP_CLICK = "Click on the map"
@@ -23,25 +31,28 @@ def get_router():
 
 
 @st.cache_data(show_spinner=False)
-def get_risk_layer():
-    return risk_layer()
+def get_risk_layer(measure: str):
+    return risk_layer(measure=measure)
 
 
-def add_risk_layer(fmap: folium.Map) -> None:
-    layer = folium.FeatureGroup(name="Top 5% riskiest intersections")
-    for r in get_risk_layer().itertuples():
-        fallback = "yes (proxy, static-only estimate)" if r.is_proxy_fallback else "no"
+def add_risk_layer(fmap: folium.Map, measure: str) -> None:
+    label = LAYER_MEASURES[measure][1]
+    layer = folium.FeatureGroup(name=f"Top 5% by {label}")
+    for r in get_risk_layer(measure).itertuples():
+        note = "<br>proxy: SPF estimate, own counts misattributed" if r.is_proxy_fallback else ""
         folium.CircleMarker(
             (r.lat, r.lon),
-            radius=2.5 + 0.35 * r.risk**0.5,
+            radius=2.5 + 4 * r.size**0.5,
             color=r.color,
             weight=1,
             fill=True,
             fill_color=r.color,
             fill_opacity=0.6,
             tooltip=folium.Tooltip(
-                f"<b>{r.street_names}</b><br>{r.risk:.1f} predicted crashes/yr ({r.band})"
-                f"<br>proxy fallback: {fallback}"
+                f"<b>{r.street_names}</b> ({r.band} by {label})"
+                f"<br>{r.risk:.1f} expected crashes/yr"
+                f"<br>{r.risk_per_mev:.2f} crashes per million entering vehicles"
+                f"<br>{r.entering_aadt:,.0f} vehicles enter per day{note}"
             ),
         ).add_to(layer)
     layer.add_to(fmap)
@@ -51,33 +62,42 @@ def stats_card(fast, safe, lam: float) -> None:
     s = route_stats(safe, fast)
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Fastest route", f"{fast.minutes:.1f} min")
-    c1.caption(f"{fast.risk:.0f} expected crashes/yr on route · {fast.km:.1f} km")
+    c1.caption(f"{fast.risk:.1f} expected crashes per million trips · {fast.km:.1f} km")
     c2.metric(f"Safest route (λ = {lam:g})", f"{safe.minutes:.1f} min")
-    c2.caption(f"{safe.risk:.0f} expected crashes/yr on route · {safe.km:.1f} km")
+    c2.caption(f"{safe.risk:.1f} expected crashes per million trips · {safe.km:.1f} km")
     c3.metric("Extra time", f"+{s['extra_minutes']:.1f} min")
     c3.caption(f"{safe.km - fast.km:+.1f} km vs the fastest route")
-    c4.metric("Expected crashes on route", f"-{s['risk_reduction_pct']:.0f}%")
-    c4.caption(f"{safe.risk - fast.risk:+.0f} crashes/yr at the locations passed")
+    cut = s["risk_reduction_pct"]
+    c4.metric("Your crash risk on this trip", f"-{cut:.0f}%" if round(cut) > 0 else "no change")
+    c4.caption(f"{safe.risk - fast.risk:+.1f} expected crashes per million trips")
 
 
 HOW_IT_WORKS = """
-**Risk model.** Toronto Police collision records (2014-2025) are snapped to OpenStreetMap
-intersections. A LightGBM Poisson model predicts each intersection's 2026 crash count from its
-last three years of crashes and its road features (approach classes, legs, signals, transit,
-nearby activity). Intersections whose recorded crashes really belong to a mall parking lot or
-an expressway use a features-only estimate instead. Road segments carry a per-km rate by road
-class; motorways get a base rate estimated from expressway crashes.
+**Risk is per vehicle.** Each route's risk is the expected number of crashes for one driver
+making the trip, shown per million trips. At an intersection that is its Empirical Bayes
+expected crashes per year (a negative binomial Safety Performance Function on traffic
+volume and road features, blended with its last five years of Toronto Police crashes)
+divided by the vehicles entering it each year. On a road segment it is a crash rate per
+vehicle-km times the length. Traffic volumes come from City of Toronto counts plus a model
+for uncounted roads.
 
-**Routing.** Each road edge costs `travel time + λ · k · risk`, where risk is expected crashes
-per year at the intersection the edge enters plus along the segment. `k` is set so that at
-λ = 1 a typical route's risk weighs as much as its travel time. λ = 0 is the fastest route.
+**Highways.** The 401, 400, 404, 409, 427 and QEW are patrolled by the OPP, so Toronto
+Police data barely sees their crashes; they use the Ministry of Transportation's own
+collision rates per vehicle-km. Toronto Police records many Gardiner and DVP crashes at the
+surface intersections beside or under them; crashes there above what the model expects are
+moved back to the expressway.
 
-**Limitations.** Risk is where crashes happen, not a per-vehicle rate: there is no traffic
-volume term yet, so busy roads look risky partly because they are busy. Most 400-series
-highways (401, 427, 400, 404) are patrolled by the OPP, not Toronto Police, so their crashes
-are undercounted and safer routes lean on them; safer routes also cut through residential
-streets. Travel times are free-flow. Locations are police-reported and intersection-snapped,
-and road features describe today's OpenStreetMap, not past years.
+**Routing.** Each road edge costs `travel time + λ · k · risk`. `k` is set so that at
+λ = 1 a typical route's risk weighs as much as its travel time; λ = 0 is the fastest route.
+U-turns cost an extra minute.
+
+**Limitations.** Per-vehicle routing minimises your own risk, not everyone's: it can still
+send traffic through local streets when they are safer per vehicle, which moves risk onto
+the people who live and walk there. Highway rates rest on the assumption that MTO and
+Toronto Police crash records are comparable (routing behaviour holds when they are halved
+or doubled). Travel times are free-flow, which flatters long highway detours. Volumes on
+uncounted roads are modelled (typical error 20-45%). Locations are police-reported and
+intersection-snapped, and road features describe today's OpenStreetMap.
 """
 
 
@@ -126,7 +146,17 @@ def main() -> None:
     show_risk = st.sidebar.toggle(
         "Show top 5% riskiest intersections", value=_param("risk", "1") == "1"
     )
+    measure = "crashes"
     if show_risk:
+        measure = st.sidebar.radio(
+            "Rank intersections by",
+            list(LAYER_MEASURES),
+            index=list(LAYER_MEASURES).index(_param("layer", "crashes")),
+            format_func=lambda m: {
+                "crashes": "Expected crashes per year",
+                "rate": f"Crashes per vehicle (≥ {LAYER_MIN_AADT:,} vehicles/day)",
+            }[m],
+        )
         st.sidebar.markdown(
             " ".join(f"<span style='color:{c}'>●</span> {label}" for _, label, c in RISK_BANDS),
             unsafe_allow_html=True,
@@ -134,7 +164,7 @@ def main() -> None:
 
     fmap = folium.Map(location=TORONTO, zoom_start=11, tiles="OpenStreetMap")
     if show_risk:
-        add_risk_layer(fmap)
+        add_risk_layer(fmap, measure)
     routes = None
     if o and d:
         on, dn = router.nearest_node(*o), router.nearest_node(*d)

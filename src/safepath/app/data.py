@@ -46,27 +46,40 @@ def route_latlon(router: Router, route: Route, transformer: Transformer) -> list
     return [[float(a), float(b)] for a, b in zip(lat, lon, strict=True)]
 
 
-# Bands within the top 5% of intersections by predicted risk, darkest = riskiest.
+# Bands within the top 5% of intersections by the chosen measure, darkest = riskiest.
 RISK_BANDS = [(0.99, "top 1%", "#a3201f"), (0.975, "top 1-2.5%", "#e34948"),
               (0.95, "top 2.5-5%", "#eda100")]  # fmt: skip
+# The per-vehicle ranking only considers intersections with at least this entering AADT:
+# below it a handful of crashes over a small volume gives noisy, extreme rates.
+LAYER_MIN_AADT = 5_000
+LAYER_MEASURES = {
+    "crashes": ("risk", "expected crashes/yr"),
+    "rate": ("risk_per_mev", "crashes per million entering vehicles"),
+}
 
 
-def risk_layer(cfg: dict[str, Any] | None = None) -> pd.DataFrame:
-    """Top 5% riskiest intersections with lat/lon, OSM street names, and a quantile band."""
+def risk_layer(cfg: dict[str, Any] | None = None, measure: str = "crashes") -> pd.DataFrame:
+    """Top 5% riskiest intersections by expected crashes/yr ("crashes") or by crashes per
+    million entering vehicles ("rate", busy-enough intersections only), with lat/lon, OSM
+    street names, both measures, and a quantile band."""
     cfg = cfg or load_config()
+    column, _ = LAYER_MEASURES[measure]
     processed = Path(cfg["paths"]["processed_dir"])
     risk = pd.read_parquet(processed / INTERSECTION_RISK)
     inter = pd.read_parquet(
         processed / INTERSECTIONS, columns=["intersection_id", "x", "y", "street_names"]
     )
     df = risk.merge(inter, on="intersection_id")
-    cuts = {q: df["risk"].quantile(q) for q, _, _ in RISK_BANDS}
-    top = df[df["risk"] >= cuts[0.95]].copy()
+    if measure == "rate":
+        df = df[df["entering_aadt"] >= LAYER_MIN_AADT]
+    cuts = {q: df[column].quantile(q) for q, _, _ in RISK_BANDS}
+    top = df[df[column] >= cuts[0.95]].copy()
     top["band"], top["color"] = RISK_BANDS[-1][1], RISK_BANDS[-1][2]
     for q, label, color in reversed(RISK_BANDS[:-1]):
-        sel = top["risk"] >= cuts[q]
+        sel = top[column] >= cuts[q]
         top.loc[sel, "band"], top.loc[sel, "color"] = label, color
     lon, lat = to_wgs84(cfg["graph"]["crs"]).transform(top["x"].to_numpy(), top["y"].to_numpy())
     top["lat"], top["lon"] = lat, lon
     top["street_names"] = top["street_names"].replace("", "(unnamed)")
-    return top.sort_values("risk").reset_index(drop=True)
+    top["size"] = top[column] / top[column].max()
+    return top.sort_values(column).reset_index(drop=True)

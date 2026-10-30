@@ -33,6 +33,9 @@ def test_risk_layer_keeps_top_five_percent_with_bands(tmp_path):
         {
             "intersection_id": range(n),
             "risk": np.arange(n, dtype=float),
+            # per-vehicle rate runs the other way; the first 100 are too quiet to rank
+            "risk_per_mev": np.arange(n, 0, -1, dtype=float),
+            "entering_aadt": np.r_[np.full(100, 1_000.0), np.full(n - 100, 20_000.0)],
             "is_proxy_fallback": [False] * n,
         }
     ).to_parquet(tmp_path / "intersection_risk.parquet")
@@ -51,3 +54,8 @@ def test_risk_layer_keeps_top_five_percent_with_bands(tmp_path):
     assert top["band"].value_counts().to_dict() == {"top 2.5-5%": 10, "top 1-2.5%": 6, "top 1%": 4}
     assert top.iloc[-1]["street_names"] == "(unnamed)"  # highest risk, empty name
     assert 43 < top["lat"].iloc[0] < 44 and -80 < top["lon"].iloc[0] < -79
+
+    by_rate = risk_layer(cfg, measure="rate")
+    assert len(by_rate) == 15  # top 5% of the 300 busy-enough intersections
+    assert by_rate["intersection_id"].min() >= 100  # quiet ones never enter the ranking
+    assert by_rate["intersection_id"].max() <= 114  # highest rates among the busy ones
