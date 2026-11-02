@@ -35,12 +35,13 @@ import pandas as pd
 from safepath.data.aadt import match_tmc
 from safepath.data.ottawa import VOLUME_COUNTS
 from safepath.features.volume_features import (
+    approach_volumes,
     edge_centrality,
     intersection_features,
     segment_features,
     write_intersection_exposure,
 )
-from safepath.graph import EDGE_MAP, GRAPH_STATS, INTERSECTIONS, SEGMENTS
+from safepath.graph import EDGE_MAP, GRAPH_STATS, INTERSECTIONS, NODE_MAP, SEGMENTS
 from safepath.locations import markdown_table
 from safepath.models.volume import (
     AADT_EDGES,
@@ -101,6 +102,34 @@ def metric_rows(data: pd.DataFrame, preds: dict[str, pd.Series]) -> pd.DataFrame
             rows.append({"class combo": name, "model": model,
                          **metrics(y, p.loc[idx].astype(float).to_numpy())})  # fmt: skip
     return pd.DataFrame(rows)
+
+
+COUNTFREE_EXPOSURE = "intersection_exposure_countfree.parquet"
+
+
+def write_countfree_exposure(
+    processed: Path,
+    inter_s: pd.DataFrame,
+    seg_s: pd.DataFrame,
+    b_inter: lgb.Booster,
+    b_seg: lgb.Booster,
+    cats: dict[str, list],
+) -> pd.DataFrame:
+    """Exposure that uses no Ottawa traffic count at all: Toronto's intersection and segment
+    models with the a-priori betweenness rescaling, no blending, no level correction. For
+    the fully count-free SPF variant of group A."""
+    entering = np.exp(b_inter.predict(prepare(inter_s.assign(count_year=PREDICT_YEAR),
+                                              INTERSECTION_FEATURES, cats)))  # fmt: skip
+    sx = seg_s.set_index("segment_id").assign(count_year=PREDICT_YEAR)
+    seg = pd.Series(np.exp(b_seg.predict(prepare(sx, SEGMENT_FEATURES, cats))), index=sx.index)
+    edges = pd.read_parquet(processed / EDGE_MAP)
+    edges["aadt_segment"] = edges["segment_id"].map(seg)
+    segments = pd.read_parquet(processed / SEGMENTS, columns=["segment_id", "name"])
+    node_map = pd.read_parquet(processed / NODE_MAP)
+    out = pd.DataFrame({"entering_aadt": entering}, index=inter_s.index.rename("intersection_id"))
+    out = out.join(approach_volumes(edges, node_map, segments))
+    out.reset_index().to_parquet(processed / COUNTFREE_EXPOSURE, index=False)
+    return out
 
 
 def run_ottawa_volumes(cfg: dict[str, Any], toronto: dict[str, Any]) -> dict[str, Any]:
@@ -219,6 +248,7 @@ def run_ottawa_volumes(cfg: dict[str, Any], toronto: dict[str, Any]) -> dict[str
     edges["source"] = "toronto segment model"
     edges.to_parquet(processed / AADT_EDGES, index=False)
     expo = write_intersection_exposure(processed, out_i, edges)
+    write_countfree_exposure(processed, inter_s, seg_s, b_inter, b_seg, cats)
 
     by_class = (
         out_i.groupby("class_combo")["aadt"].agg(["size", "median"])

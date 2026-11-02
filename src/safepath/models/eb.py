@@ -45,7 +45,7 @@ def eb_for_year(
     hist = labels[labels["year"].isin(hist_years)]
     obs = hist.groupby("intersection_id")["crash_count"].sum().reindex(base.index).fillna(0)
     spf_hist = base * levels.reindex(hist_years).sum()
-    spf_t = base * levels[t - 1]
+    spf_t = base * levels[max(y for y in levels.index if y < t)]  # t - 1 unless unpublished
     w = 1 / (1 + k * spf_hist)
     eb = spf_t * (w + (1 - w) * obs / spf_hist)
     return pd.DataFrame(

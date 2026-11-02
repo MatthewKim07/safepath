@@ -29,6 +29,7 @@ from safepath.models.spf import run_spf
 from safepath.models.train import run_train
 from safepath.models.volume_report import run_volume_model
 from safepath.ottawa.build import run_ottawa_build
+from safepath.ottawa.transfer import run_ottawa_transfer
 from safepath.ottawa.volumes import run_ottawa_volumes
 from safepath.risk import run_score
 from safepath.routing import run_routing
@@ -102,8 +103,12 @@ STEPS: dict[str, tuple[str, Callable[[dict], None]]] = {
         "Ottawa: Toronto's AADT model vs Ottawa counts; Ottawa AADT for the crash models",
         lambda cfg: run_ottawa_volumes(ottawa_config(cfg), toronto_config(cfg)),
     ),
+    "ottawa-transfer": (
+        "Ottawa: score Toronto-trained crash models (GNNs in a subprocess); reports/ottawa.md",
+        lambda cfg: run_ottawa_transfer(ottawa_config(cfg), toronto_config(cfg)),
+    ),
 }
-OTTAWA_PIPELINE = ["ottawa-data", "ottawa-build", "ottawa-volumes"]
+OTTAWA_PIPELINE = ["ottawa-data", "ottawa-build", "ottawa-volumes", "ottawa-transfer"]
 PIPELINE = [
     "download",
     "clean",
