@@ -55,7 +55,9 @@ OSM_NAME = {
     "409": r"^Highway 409\b",
     "427": r"^Highway 427\b",
     "QEW": r"^Queen Elizabeth Way\b",
+    "402": r"^Highway 402\b",
 }
+TORONTO_HIGHWAYS = ["401", "400", "404", "409", "427", "QEW"]
 # MTO codes the QEW as highway 1.
 MTO_NUMBER = {"QEW": 1}
 
@@ -121,6 +123,19 @@ CROSSINGS: dict[tuple[str, int], str | None] = {
     ("QEW", 10151): None,  # Cawthra Rd
     ("QEW", 10153): None,  # Dixie Rd
     ("QEW", 10155): "Evans Avenue",
+    # London, Ontario (CP10): the 401 and 402 along the south of the city
+    ("401", 47840): None,  # Union Rd / Elgin Rd 20
+    ("401", 47830): "Colonel Talbot Road",
+    ("401", 47828): "Wonderland Road South",
+    ("401", 47826): r"^Highway 402\b",
+    ("401", 47823): r"^Wellington Road\b",
+    ("401", 47820): r"^Highbury Avenue\b",
+    ("401", 47815): "Veterans Memorial Parkway",
+    ("401", 47810): None,  # Westchester Bourne
+    ("402", 48111): r"^Highway 401\b",
+    ("402", 48112): "Wonderland Road South",
+    ("402", 48115): "Colonel Talbot Road",
+    ("402", 48120): None,  # Longwoods Rd
 }
 LOCATE_MAX_M = 400  # a crossing road farther than this from the highway is not its interchange
 RATE_YEARS = (2015, 2019)  # pooled collision-rate window: recent, pre-pandemic, five years
@@ -574,22 +589,23 @@ def write_report(
     path.write_text("\n".join(lines) + "\n")
 
 
-def run_mto(cfg: dict[str, Any]) -> pd.DataFrame:
+def map_sections(
+    cfg: dict[str, Any], highways: list[str], segments: gpd.GeoDataFrame, pdf_cache: Path
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, str], int]:
+    """MTO sections of `highways` with AADT and pooled collision rates, mapped onto the OSM
+    motorway segments of one city's graph. Returns (sections, segment map, located
+    sections, naming rule per highway, PDF rows read)."""
     m = cfg["mto"]
-    processed = Path(cfg["paths"]["processed_dir"])
     paths = download(cfg)
-    highways = list(OSM_NAME)
     history = load_aadt_csv(paths["aadt_csv"], highways)
-    pdf_cache = processed / MTO_PDF_ROWS
     if pdf_cache.exists():
         pdf = pd.read_parquet(pdf_cache)
     else:
         pdf = load_pdf(paths["volumes_pdf"], highways, [tuple(p) for p in m["pdf_pages"]])
+        pdf_cache.parent.mkdir(parents=True, exist_ok=True)
         pdf.to_parquet(pdf_cache, index=False)
     history = attach_collisions(history, pdf)
     sections = section_summary(history, m["latest_year"])
-
-    segments = gpd.read_parquet(processed / SEGMENTS)
     located, segmaps, rules = [], [], {}
     for hwy in highways:
         secs = sections[sections["hwy"] == hwy]
@@ -609,11 +625,20 @@ def run_mto(cfg: dict[str, Any]) -> pd.DataFrame:
         sections[["hwy", "lhrs", f"aadt_{m['latest_year']}", "cr", "cr_source"]],
         on=["hwy", "lhrs"],
     )
+    return sections, segmap, located_df, rules, len(pdf)
+
+
+def run_mto(cfg: dict[str, Any]) -> pd.DataFrame:
+    processed = Path(cfg["paths"]["processed_dir"])
+    segments = gpd.read_parquet(processed / SEGMENTS)
+    sections, segmap, located_df, rules, n_pdf = map_sections(
+        cfg, TORONTO_HIGHWAYS, segments, processed / MTO_PDF_ROWS
+    )
     sections.to_parquet(processed / MTO_SECTIONS, index=False)
     segmap.to_parquet(processed / MTO_SEGMENTS, index=False)
 
     named = segments["highway"].eq("motorway") & segments["name"].fillna("").str.contains(
-        "|".join(OSM_NAME.values()), regex=True
+        "|".join(OSM_NAME[h] for h in TORONTO_HIGHWAYS), regex=True
     )
     cfg = {**cfg, "_motorway_named_km": segments.loc[named, "length"].sum() / 1000}
     plot_sections(
@@ -625,7 +650,7 @@ def run_mto(cfg: dict[str, Any]) -> pd.DataFrame:
         located_df,
         segmap,
         rules,
-        len(pdf),
+        n_pdf,
         Path(cfg["paths"]["reports_dir"]) / "mto.md",
     )
     log.info(

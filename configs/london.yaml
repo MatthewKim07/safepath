@@ -1,0 +1,31 @@
+# London, Ontario demo (CP10). No public London collision records exist: risk is Toronto's
+# SPF on London road features and London traffic volumes, shown as RELATIVE risk.
+extends: default.yaml
+city: london
+
+paths:
+  raw_dir: data/raw/london
+  page_cache_dir: data/raw/london/pages
+  processed_dir: data/processed/london
+  reports_dir: reports/london
+  figures_dir: reports/figures/london
+  models_dir: models/london
+
+graph:
+  place: London, Ontario, Canada
+  crs: EPSG:32617
+  downtown: [42.9832, -81.2497]  # Covent Garden Market
+
+london:
+  volumes:
+    # City of London open data, Traffic Volumes (AADT per line segment) and the companion
+    # Intersection Types layer that marks where each volume segment starts and ends
+    url: https://maps.london.ca/server/rest/services/OpenData/OpenData_Transportation/MapServer/21/query
+    intersection_types_url: https://maps.london.ca/server/rest/services/OpenData/OpenData_Transportation/MapServer/16/query
+    licence: Open Government Licence - City of London
+    match_m: 15          # OSM segment sample points must lie this close to a City line...
+    match_unnamed_m: 8   # ...or this close when the OSM segment has no name
+    timeout_seconds: 120
+
+osm:
+  allow_empty_layers: [tram]  # no on-street tram in London

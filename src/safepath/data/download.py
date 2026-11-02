@@ -70,7 +70,8 @@ class LayerDownloader:
 
     Works on any layer with an integer object-id field: `oid_field` and the page size default
     to the layer's own objectIdField and maxRecordCount. With `geometry=True` point
-    geometries are requested in WGS84 and stored as `geom_lon` / `geom_lat`.
+    geometries are requested in WGS84 and stored as `geom_lon` / `geom_lat` (points) or
+    `geom_paths` (polylines, JSON vertex lists).
     """
 
     def __init__(
@@ -96,7 +97,11 @@ class LayerDownloader:
         self.session = requests.Session()
         if oid_field is None or page_size is None:
             meta = self._query_url(url.removesuffix("/query"))
-            oid_field = oid_field or meta["objectIdField"]
+            # FeatureServers name it; MapServer layers only type it
+            oid = meta.get("objectIdField") or next(
+                f["name"] for f in meta["fields"] if f["type"] == "esriFieldTypeOID"
+            )
+            oid_field = oid_field or oid
             page_size = page_size or int(meta.get("maxRecordCount") or 1000)
         self.oid_field, self.page_size = oid_field, int(page_size)
 
@@ -110,14 +115,17 @@ class LayerDownloader:
         return int(self._query(where="1=1", returnCountOnly="true")["count"])
 
     def objectid_range(self) -> tuple[int, int]:
+        # "min" / "max" are reserved words in some backing databases, so alias them
         stats = [
-            {"statisticType": s, "onStatisticField": self.oid_field, "outStatisticFieldName": s}
+            {"statisticType": s, "onStatisticField": self.oid_field,
+             "outStatisticFieldName": f"oid_{s}"}
             for s in ("min", "max")
-        ]
+        ]  # fmt: skip
         attrs = self._query(where="1=1", outStatistics=json.dumps(stats))["features"][0][
             "attributes"
         ]
-        return int(attrs["min"]), int(attrs["max"])
+        attrs = {k.lower(): v for k, v in attrs.items()}
+        return int(attrs["oid_min"]), int(attrs["oid_max"])
 
     def _page_path(self, lo: int, hi: int) -> Path:
         return self.page_dir / f"objectid_{lo + 1:07d}_{hi:07d}.json.gz"
@@ -143,7 +151,10 @@ class LayerDownloader:
             row = dict(feat["attributes"])
             if self.geometry:
                 geom = feat.get("geometry") or {}
-                row["geom_lon"], row["geom_lat"] = geom.get("x"), geom.get("y")
+                if "paths" in geom:  # polylines: WGS84 vertex lists, as JSON text
+                    row["geom_paths"] = json.dumps(geom["paths"])
+                else:
+                    row["geom_lon"], row["geom_lat"] = geom.get("x"), geom.get("y")
             rows.append(row)
         tmp = path.with_suffix(".tmp")
         with gzip.open(tmp, "wt") as f:
