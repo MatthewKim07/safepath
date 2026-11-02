@@ -22,7 +22,8 @@ london:
     # Intersection Types layer that marks where each volume segment starts and ends
     url: https://maps.london.ca/server/rest/services/OpenData/OpenData_Transportation/MapServer/21/query
     intersection_types_url: https://maps.london.ca/server/rest/services/OpenData/OpenData_Transportation/MapServer/16/query
-    licence: Open Government Licence - City of London
+    licence: Terms of Use - City of London Open Data
+    terms_url: https://london.maps.arcgis.com/sharing/rest/content/items/e31458fd0c7e41dd9f93144a9550781d/data
     match_m: 15          # OSM segment sample points must lie this close to a City line...
     match_unnamed_m: 8   # ...or this close when the OSM segment has no name
     timeout_seconds: 120

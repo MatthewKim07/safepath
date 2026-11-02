@@ -148,6 +148,11 @@ extra minute.
 **Limitations.** The City's volume layer has no count dates and rounds to 500 vehicles; most
 local streets have no count and use a class median. Travel times are free-flow and road
 features describe today's OpenStreetMap.
+
+**Data.** Traffic volumes: City of London open data, used under the
+[Terms of Use – City of London Open Data](https://london.maps.arcgis.com/sharing/rest/content/items/e31458fd0c7e41dd9f93144a9550781d/data).
+Highway rates: Ontario Ministry of Transportation (Open Government Licence – Ontario). Roads:
+© OpenStreetMap contributors (ODbL).
 """
 
 

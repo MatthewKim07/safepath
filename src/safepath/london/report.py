@@ -69,7 +69,8 @@ def write_london_report(cfg: dict[str, Any], r: dict[str, Any], path: Path) -> N
         "## Traffic volumes",
         "",
         "City of London open data, *Traffic Volumes* "
-        "(`OpenData_Transportation/MapServer/21`, Open Government Licence - City of London): "
+        "(`OpenData_Transportation/MapServer/21`), under the City's [Terms of Use - City of "
+        f"London Open Data]({cfg['london']['volumes']['terms_url']}): "
         f"{vs['city_lines']:,} line segments, {vs['city_km']:.0f} km, AADT rounded to 500s. "
         f"Every row was last processed on {vs['last_edit']}; the City does not publish count "
         "dates, so the volumes' age is unknown (the layer is refreshed about yearly from its "

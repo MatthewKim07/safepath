@@ -1,9 +1,11 @@
 # SafePath
 
-**Crash-risk-aware routing for Toronto.** SafePath estimates the chance that *you* crash at
+**Crash-risk-aware routing for Toronto, with a London, Ontario demo.** SafePath estimates the chance that *you* crash at
 every intersection and on every road segment, from police-reported collisions and traffic
 volumes, and routes with `cost = travel_time + λ · risk`. One slider moves between the fastest
 route and the safest one, and the app shows exactly what the safer route costs in minutes.
+
+**Live demo:** _URL to be added after deployment_ (Streamlit Community Cloud).
 
 ## Results at a glance
 
@@ -203,6 +205,27 @@ records appear, minor-injury crashes halve), so severity is not compared. Detail
 precision, volume transfer, feature shift and paired CIs:
 [`reports/ottawa.md`](reports/ottawa.md).
 
+### London, Ontario demo (no local crash data)
+
+London publishes no collision records, so the London map uses the setting that transferred
+best to Ottawa without local crash data: Toronto's Safety Performance Function on London's
+OpenStreetMap roads and the City of London's traffic-volume layer (1,973 segments, AADT
+rounded to 500; 90% matched to OSM, covering 95% of secondary and 83% of tertiary road km;
+local streets without a count use a class median). The 401 and 402 use MTO rates. The app
+labels London's numbers as **relative risk**: they keep Toronto's reporting level and are
+not calibrated for London.
+
+Sanity check against London Police's published top-10 collision intersections for
+2014-2016 (from news coverage; 12 distinct intersections, not a rigorous label set): all
+12 are in the model's top 1% of London's 5,637 intersections, but all 12 are also in the
+top 1% by traffic volume alone, and the model ranks only 6 of them higher than volume does.
+So the check shows the model is not wrong about London's known hotspots; it cannot show it
+adds anything beyond traffic. Routing (200 random trips, k recalibrated for London): at
+λ = 1, median +0.7 min for 17% lower relative risk; at λ = 2, +1.1 min for 21%. Details:
+[`reports/london.md`](reports/london.md).
+
+![City selector with London selected: Western University to White Oaks Mall at λ = 2](reports/figures/app_london_lambda2.png)
+
 ## Validation highlights
 
 - **No leakage.** History features and EB use only years before the label year; tests
@@ -280,6 +303,17 @@ python -m safepath all             # download, build, model, score, route (~15 m
 python -m safepath app             # open the Streamlit app
 python -m safepath gnn             # optional: GNN grid, 5 seeds, spatial folds (~45 min on a laptop GPU)
 python -m safepath ottawa          # cross-city test (needs `all` and `gnn` first; configs/ottawa.yaml)
+python -m safepath london          # London demo (needs `all`; configs/london.yaml)
+python -m safepath bundle          # slim app data for both cities -> app_bundle/
+```
+
+The deployed app needs none of the pipeline: it reads only `app_bundle/` (9.7 MB, committed)
+and installs `requirements-app.txt` (Streamlit, folium, numpy, pandas, pyarrow, scipy). To
+run it the way Streamlit Community Cloud does:
+
+```bash
+python -m venv .venv-app && .venv-app/bin/pip install -r requirements-app.txt
+.venv-app/bin/streamlit run deploy/streamlit_app.py
 ```
 
 Steps also run on their own: `download`, `clean`, `report-data`, `graph`, `locations`,
@@ -289,7 +323,7 @@ Steps also run on their own: `download`, `clean`, `report-data`, `graph`, `locat
 server rate-limits you, `SAFEPATH_OVERPASS_URL` points OSMnx at a mirror. Network fetches
 retry and then fail loudly; `all` stops at the first failing step. Configuration lives in
 `configs/default.yaml`; `pytest` runs the test suite. The app takes shareable query
-parameters, e.g. `?origin=Union+Station&destination=Yorkdale&lam=2`.
+parameters, e.g. `?city=london&origin=Masonville+Place&destination=White+Oaks+Mall&lam=2`.
 
 ## Limitations
 
@@ -315,19 +349,24 @@ parameters, e.g. `?origin=Union+Station&destination=Yorkdale&lam=2`.
   data is unpublished, and its 2024 records change how minor-injury and non-reportable
   collisions are coded; Ottawa's segment volumes come from Toronto's model with a level
   correction chosen on Ottawa's intersection counts.
+- **London is relative only:** no London crash data; risk is a Toronto model's expectation,
+  the volume layer has no count dates, and most local streets use a class-median volume.
 
 ## Roadmap
 
 - **Phase 3: generalisation.** Done: a graph neural network against LightGBM and the SPF;
-  a cross-city test on Ottawa. Remaining: a London, Ontario demo.
-- **Phase 4: product.** A deployed demo and a model card; later, time- and weather-aware
-  risk.
+  a cross-city test on Ottawa; a London, Ontario demo without local crash data.
+- **Phase 4: product.** Next: the public deployment (the app is ready for Streamlit
+  Community Cloud) and a model card; later, time- and weather-aware risk.
 
 ## Repository layout
 
 ```
 configs/default.yaml        pipeline configuration (paths, thresholds, splits, proxy rules)
 configs/ottawa.yaml         Ottawa overrides (study area, years, services)
+configs/london.yaml         London overrides (municipal boundary, volume layer)
+app_bundle/                 precomputed app data per city (routing arrays, intersections)
+deploy/                     Streamlit Community Cloud entrypoint and requirements
 src/safepath/data/          collisions, City traffic counts (AADT), MTO highway data
 src/safepath/features/      labels, proxy rules, road, history and volume features
 src/safepath/models/        baselines, LightGBM, volume model, SPF, EB, calibration
@@ -339,6 +378,9 @@ src/safepath/routing.py     λ routing, k calibration, evaluation, sensitivity
 src/safepath/explain.py     SHAP and per-intersection risk factors
 src/safepath/gnn/           intersection graph, MLP / GraphSAGE / GATv2, training, transfer
 src/safepath/ottawa/        Ottawa build, volume and crash-model transfer, report
+src/safepath/london/        London volumes, risk, routing evaluation, report
+src/safepath/router.py      turn-aware routing on compact arrays (used by the app)
+src/safepath/bundle.py      writes app_bundle/
 src/safepath/tracking.py    optional Weights & Biases logging
 src/safepath/app/           Streamlit app
 reports/                    generated reports and figures
@@ -353,6 +395,9 @@ tests/                      unit tests (leakage, calibration, routing, snapping,
   classification counts), Open Government Licence – Toronto.
 - Ottawa collisions, intersection traffic counts and urban boundary: City of Ottawa open
   data (open.ottawa.ca), Open Government Licence – City of Ottawa.
+- London traffic volumes: City of London open data (*Traffic Volumes*), used and
+  redistributed in derived form (app_bundle/) under the
+  [Terms of Use – City of London Open Data](https://london.maps.arcgis.com/sharing/rest/content/items/e31458fd0c7e41dd9f93144a9550781d/data).
 - Provincial highway volumes and collision rates: Ontario Ministry of Transportation,
   Technical Publications, [Open Government Licence – Ontario](https://www.ontario.ca/page/open-government-licence-ontario).
 - Road network, points of interest and basemap tiles: © [OpenStreetMap](https://www.openstreetmap.org/copyright)
