@@ -1,3 +1,10 @@
+import os
+
+# torch and LightGBM ship different libomp builds on macOS; once LightGBM has run threads,
+# torch segfaults in its first parallel op in the same process. Tests use both, so they run
+# OpenMP single-threaded. (The pipeline keeps them in separate processes instead.)
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+
 import networkx as nx
 import osmnx as ox
 import pytest
