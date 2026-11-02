@@ -36,6 +36,18 @@ from safepath.tracking import DISABLE_ENV
 log = logging.getLogger("safepath")
 
 
+def run_gnn(cfg: dict) -> None:
+    """GNN training in its own process: torch and LightGBM ship different OpenMP runtimes
+    on macOS and cannot both run threads in one process. Device and W&B settings pass
+    through the environment."""
+    cmd = [sys.executable, "-m", "safepath.gnn.train"]
+    if cfg.get("_config_path"):
+        cmd += ["--config", str(cfg["_config_path"])]
+    result = subprocess.run(cmd, check=False)
+    if result.returncode != 0:
+        raise RuntimeError(f"GNN training exited with code {result.returncode}")
+
+
 def run_app(cfg: dict) -> None:
     """Launch the Streamlit app; blocks until the server stops."""
     script = Path(__file__).parent / "app" / "streamlit_app.py"
@@ -73,6 +85,7 @@ STEPS: dict[str, tuple[str, Callable[[dict], None]]] = {
     "volume-model": ("Predict AADT for every intersection and edge", run_volume_model),
     "explain": ("SHAP for LightGBM + AADT and per-intersection risk factors", run_explain),
     "exposure": ("Write the exposure sanity report (crash rates per vehicle)", run_exposure),
+    "gnn": ("Train and evaluate GNNs on the intersection graph (not in `all`)", run_gnn),
     "app": ("Launch the Streamlit routing app", run_app),
 }
 PIPELINE = [
@@ -103,6 +116,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="safepath", description=__doc__)
     parser.add_argument("--config", default=None, help="path to a YAML config")
     parser.add_argument("--no-wandb", action="store_true", help="do not log to Weights & Biases")
+    parser.add_argument("--device", default=None, help="GNN device: cuda, mps or cpu")
     sub = parser.add_subparsers(dest="step", required=True, metavar="<step>")
     for name, (help_text, _) in STEPS.items():
         sub.add_parser(name, help=help_text)
@@ -116,6 +130,10 @@ def main(argv: list[str] | None = None) -> int:
     cfg = load_config(args.config)
     if args.no_wandb:
         os.environ[DISABLE_ENV] = "1"
+    if args.device:
+        os.environ["SAFEPATH_DEVICE"] = args.device
+    if args.config:
+        cfg["_config_path"] = args.config
     steps = PIPELINE if args.step == "all" else [args.step]
     for step in steps:
         log.info("running step '%s'", step)
