@@ -358,8 +358,13 @@ parameters, e.g. `?city=london&origin=Masonville+Place&destination=White+Oaks+Ma
 
 - **Phase 3: generalisation.** Done: a graph neural network against LightGBM and the SPF;
   a cross-city test on Ottawa; a London, Ontario demo without local crash data.
-- **Phase 4: product.** Next: the public deployment (the app is ready for Streamlit
-  Community Cloud) and a model card; later, time- and weather-aware risk.
+- **Phase 4: product.** Done: the public deployment on Streamlit Community Cloud
+  ([safepath-ml.streamlit.app](https://safepath-ml.streamlit.app)), Toronto and London.
+  Optional next steps:
+  - better London residential volume estimates (most local streets now use a class median);
+  - Ottawa as a third app city;
+  - a model card;
+  - time- and weather-aware risk.
 
 ## Repository layout
 
