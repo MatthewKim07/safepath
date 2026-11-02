@@ -1,3 +1,10 @@
-# Streamlit Community Cloud reads this file from the entrypoint's directory, so the deploy
-# installs only the slim app requirements, not the pipeline in pyproject.toml.
--r ../requirements-app.txt
+# Streamlit Community Cloud installs this file (it sits next to the entrypoint): only the
+# slim app requirements, not the pipeline in pyproject.toml. Keep the pins identical to
+# requirements-app.txt (tests/test_app_data.py checks).
+streamlit==1.66.1
+streamlit-folium==0.27.4
+folium==0.20.0
+numpy==2.5.4
+pandas==3.1.0
+pyarrow==26.0.0
+scipy==1.18.1

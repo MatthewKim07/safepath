@@ -308,11 +308,11 @@ python -m safepath bundle          # slim app data for both cities -> app_bundle
 ```
 
 The deployed app needs none of the pipeline: it reads only `app_bundle/` (9.7 MB, committed)
-and installs `requirements-app.txt` (Streamlit, folium, numpy, pandas, pyarrow, scipy). To
-run it the way Streamlit Community Cloud does:
+and installs `deploy/requirements.txt` (Streamlit, folium, numpy, pandas, pyarrow, scipy;
+the same pins as `requirements-app.txt`). To run it the way Streamlit Community Cloud does:
 
 ```bash
-python -m venv .venv-app && .venv-app/bin/pip install -r requirements-app.txt
+python -m venv .venv-app && .venv-app/bin/pip install -r deploy/requirements.txt
 .venv-app/bin/streamlit run deploy/streamlit_app.py
 ```
 

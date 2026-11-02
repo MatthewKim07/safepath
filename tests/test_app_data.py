@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -54,3 +56,15 @@ def test_committed_bundle_loads(city):
     assert c.router.k > 0 and len(c.intersections) > 1000
     assert set(c.meta["default_trip"]) <= set(c.meta["presets"])
     assert c.relative == (city == "london")
+
+
+def pins(path: Path) -> list[str]:
+    lines = (line.split("#")[0].strip() for line in path.read_text().splitlines())
+    return sorted(line for line in lines if line)
+
+
+def test_deploy_requirements_match_app_requirements():
+    root = Path(__file__).resolve().parents[1]
+    deploy = pins(root / "deploy" / "requirements.txt")
+    assert deploy == pins(root / "requirements-app.txt")
+    assert all("==" in line for line in deploy)  # pinned packages only, no -r includes
