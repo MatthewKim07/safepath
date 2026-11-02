@@ -10,6 +10,7 @@ import pandas as pd
 from pyproj import Transformer
 
 from safepath.config import load_config
+from safepath.explain import INTERSECTION_FACTORS
 from safepath.graph import INTERSECTIONS
 from safepath.risk import INTERSECTION_RISK
 from safepath.routing import Route, Router, load_router
@@ -70,6 +71,14 @@ def risk_layer(cfg: dict[str, Any] | None = None, measure: str = "crashes") -> p
         processed / INTERSECTIONS, columns=["intersection_id", "x", "y", "street_names"]
     )
     df = risk.merge(inter, on="intersection_id")
+    factors_path = processed / INTERSECTION_FACTORS
+    if factors_path.exists():
+        factors = pd.read_parquet(
+            factors_path, columns=["intersection_id", "factor_1", "factor_2", "factor_3"]
+        )
+        df = df.merge(factors, on="intersection_id", how="left")
+    else:
+        df[["factor_1", "factor_2", "factor_3"]] = ""
     if measure == "rate":
         df = df[df["entering_aadt"] >= LAYER_MIN_AADT]
     cuts = {q: df[column].quantile(q) for q, _, _ in RISK_BANDS}

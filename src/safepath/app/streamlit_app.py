@@ -40,6 +40,15 @@ def add_risk_layer(fmap: folium.Map, measure: str) -> None:
     layer = folium.FeatureGroup(name=f"Top 5% by {label}")
     for r in get_risk_layer(measure).itertuples():
         note = "<br>proxy: SPF estimate, own counts misattributed" if r.is_proxy_fallback else ""
+        factors = "".join(f"<li>{f}</li>" for f in (r.factor_1, r.factor_2, r.factor_3) if f)
+        html = (
+            f"<b>{r.street_names}</b> ({r.band} by {label})"
+            f"<br>{r.risk:.1f} expected crashes/yr"
+            f"<br>{r.risk_per_mev:.2f} crashes per million entering vehicles"
+            f"<br>{r.entering_aadt:,.0f} vehicles enter per day{note}"
+            f"<br><i>Main factors (expected crashes/yr):</i><ul style='margin:2px 0 0 16px;"
+            f"padding:0'>{factors}</ul>"
+        )
         folium.CircleMarker(
             (r.lat, r.lon),
             radius=2.5 + 4 * r.size**0.5,
@@ -48,12 +57,9 @@ def add_risk_layer(fmap: folium.Map, measure: str) -> None:
             fill=True,
             fill_color=r.color,
             fill_opacity=0.6,
-            tooltip=folium.Tooltip(
-                f"<b>{r.street_names}</b> ({r.band} by {label})"
-                f"<br>{r.risk:.1f} expected crashes/yr"
-                f"<br>{r.risk_per_mev:.2f} crashes per million entering vehicles"
-                f"<br>{r.entering_aadt:,.0f} vehicles enter per day{note}"
-            ),
+            bubbling_mouse_events=False,  # a click opens the popup, not a map-click route point
+            tooltip=folium.Tooltip(html),
+            popup=folium.Popup(html, max_width=340),
         ).add_to(layer)
     layer.add_to(fmap)
 
@@ -86,6 +92,11 @@ Police data barely sees their crashes; they use the Ministry of Transportation's
 collision rates per vehicle-km. Toronto Police records many Gardiner and DVP crashes at the
 surface intersections beside or under them; crashes there above what the model expects are
 moved back to the expressway.
+
+**Why an intersection is risky.** The factors shown for each intersection split its
+expected crashes into the model's terms (intersection type, traffic volume, legs, leg
+angle, streetcar tracks, road classes) and its own crash history relative to what those
+predict, with how much each multiplies expected crashes per year.
 
 **Routing.** Each road edge costs `travel time + λ · k · risk`. `k` is set so that at
 λ = 1 a typical route's risk weighs as much as its travel time; λ = 0 is the fastest route.

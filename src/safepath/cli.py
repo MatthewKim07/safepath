@@ -16,6 +16,7 @@ from safepath.data.mto import run_mto
 from safepath.data.report import run_report
 from safepath.data.volume_report import run_volumes
 from safepath.evaluate import run_evaluate
+from safepath.explain import run_explain
 from safepath.exposure import run_exposure
 from safepath.features.build import run_features
 from safepath.graph import run_graph
@@ -68,6 +69,7 @@ STEPS: dict[str, tuple[str, Callable[[dict], None]]] = {
     "volumes": ("Download Toronto traffic counts, expand to AADT, match to the graph", run_volumes),
     "mto": ("Map MTO 400-series AADT and collision rates onto the graph", run_mto),
     "volume-model": ("Predict AADT for every intersection and edge", run_volume_model),
+    "explain": ("SHAP for LightGBM + AADT and per-intersection risk factors", run_explain),
     "exposure": ("Write the exposure sanity report (crash rates per vehicle)", run_exposure),
     "app": ("Launch the Streamlit routing app", run_app),
 }
@@ -89,6 +91,7 @@ PIPELINE = [
     "evaluate",
     "calibration",
     "score",
+    "explain",
     "exposure",
     "route",
 ]
