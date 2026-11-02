@@ -19,6 +19,10 @@ route and the safest one, and the app shows exactly what the safer route costs i
   only ~8% of their crashes. SafePath uses the Ministry of Transportation's own rates, and
   moves Gardiner/DVP crashes that police place at surface streets back onto the expressway,
   which lands both in the MTO freeway range.
+- **Tested in a second city.** On Ottawa, with no Ottawa crash labels in training,
+  Toronto's EB recipe with Ottawa's own crash history finds hotspots as well as an
+  Ottawa-trained model (recall@5% 0.69), but no Toronto model beats Ottawa's own
+  three-year crash average on Spearman. The cross-city result is reported as is.
 
 ![Union Station to Yorkdale: count-based (red) vs per-vehicle (green) safest route](reports/figures/before_after_union_yorkdale.png)
 
@@ -104,8 +108,9 @@ is (estimated from 22,000 pairs of repeat counts). Details:
 
 Recall@5% is the share of 2025 crashes at the 5% of intersections ranked riskiest; CIs from
 1,000 bootstrap resamples of intersections. The road-features-only model, scored on spatial
-blocks it never saw, beats a road-class lookup (Spearman 0.396) by a wide margin; it is the
-relevant number for intersections with no crash history and for other cities (Phase 3).
+blocks it never saw, beats a road-class lookup (Spearman 0.396) by a wide margin within
+Toronto. In another city it does not: on Ottawa it falls below Ottawa's own class means
+(see the cross-city test below).
 
 - The **Safety Performance Function** is a negative binomial on major- and minor-road volume,
   signal, legs, leg angle, streetcar tracks and road classes, fitted separately for
@@ -153,6 +158,44 @@ overpredict the 2025 level by about 10% and are worse calibrated per vehicle on 
 routing stays on recalibrated EB. Training runs on Apple-silicon GPU (MPS) at 0.34 s per epoch
 for GraphSAGE versus 0.73 s on CPU; the code picks CUDA, MPS or CPU automatically. Details:
 [`reports/gnn.md`](reports/gnn.md).
+
+### Cross-city test: Ottawa
+
+Toronto-trained models scored on 15,276 Ottawa intersections inside the City's urban
+boundary (643 km²), test year 2024, with no Ottawa crash labels in any Toronto model's
+training. Freeway crashes (Hwy 416/417, OPP roads absent from Toronto's data) are removed.
+Ottawa traffic counts provide exposure; Toronto's volume model alone transfers badly (R² 0.57
+on Ottawa counts vs 0.85 at home), so Ottawa AADT comes from an Ottawa-trained volume model.
+
+| test 2024 | Ottawa data used | Spearman [95% CI] | recall@5% [95% CI] |
+|---|---|---|---|
+| Road features only: LightGBM / MLP / GraphSAGE | OSM (+ counts for GraphSAGE edges) | 0.318 / **0.366** / 0.352 | **0.586** / 0.517 / 0.556 |
+| SPF with Ottawa AADT | OSM + counts | 0.368 [0.352, 0.384] | 0.617 [0.586, 0.644] |
+| LightGBM + AADT (Ottawa history as features) | + crash history | 0.425 [0.410, 0.440] | 0.689 [0.666, 0.707] |
+| **EB** (Toronto SPF + Ottawa history) | + crash history | 0.449 [0.435, 0.464] | **0.691** [0.668, 0.710] |
+| Ottawa class-combo mean | Ottawa labels | 0.398 [0.383, 0.411] | 0.288 [0.259, 0.316] |
+| Ottawa prev-3-year mean | Ottawa history | **0.526** [0.509, 0.543] | 0.684 [0.659, 0.702] |
+| LightGBM + AADT trained on Ottawa (upper bound) | Ottawa labels | 0.488 [0.475, 0.501] | 0.690 [0.667, 0.709] |
+
+- **Sparsity first.** Ottawa has 0.57 crashes per intersection-year against Toronto's 2.35,
+  partly because Ottawa records keep mid-block crashes mid-block while Toronto Police place
+  almost all of them at intersections (1.4 vs ~38 crashes per distinct location). Thinning
+  Toronto's own 2025 crashes to Ottawa's rate drops Toronto's best model from 0.744 to 0.584
+  Spearman, so Ottawa's numbers are not comparable with Toronto's.
+- **What transfers:** with Ottawa's own crash history, Toronto's EB recipe is the best
+  transferred model and matches the Ottawa-trained model on recall@5%, but trails it on
+  Spearman (−0.039 [−0.047, −0.030]) and trails Ottawa's three-year average more.
+  Toronto's trees and GNNs with history transfer worse than EB.
+- **Road features alone** do not beat Ottawa's class-combo means on Spearman (best: MLP,
+  −0.032 [−0.047, −0.016]) but beat them on recall@5% by 0.23-0.30.
+- **Does the graph help?** Not clearly. Road-only GraphSAGE beats road-only LightGBM on
+  Spearman (+0.034) but loses on recall@5% (−0.030), and trails the graph-free MLP on
+  Spearman (−0.014).
+
+Ottawa 2023 collisions are unpublished, and 2024 shows a recording change (non-reportable
+records appear, minor-injury crashes halve), so severity is not compared. Details, location
+precision, volume transfer, feature shift and paired CIs:
+[`reports/ottawa.md`](reports/ottawa.md).
 
 ## Validation highlights
 
@@ -230,11 +273,14 @@ pip install -e ".[dev]"            # add ",tracking" for W&B, ",gnn" for PyTorch
 python -m safepath all             # download, build, model, score, route (~15 min, mostly downloads)
 python -m safepath app             # open the Streamlit app
 python -m safepath gnn             # optional: GNN grid, 5 seeds, spatial folds (~45 min on a laptop GPU)
+python -m safepath ottawa          # cross-city test (needs `all` and `gnn` first; configs/ottawa.yaml)
 ```
 
 Steps also run on their own: `download`, `clean`, `report-data`, `graph`, `locations`,
 `snap`, `report-snap`, `features`, `volumes`, `mto`, `volume-model`, `train`, `spf`, `eb`,
-`evaluate`, `calibration`, `score`, `explain`, `exposure`, `route`, `app`. Network fetches
+`evaluate`, `calibration`, `score`, `explain`, `exposure`, `route`, `app`, and for Ottawa
+`ottawa-data`, `ottawa-build`, `ottawa-volumes`, `ottawa-transfer`. If the main Overpass
+server rate-limits you, `SAFEPATH_OVERPASS_URL` points OSMnx at a mirror. Network fetches
 retry and then fail loudly; `all` stops at the first failing step. Configuration lives in
 `configs/default.yaml`; `pytest` runs the test suite. The app takes shareable query
 parameters, e.g. `?origin=Union+Station&destination=Yorkdale&lam=2`.
@@ -259,18 +305,23 @@ parameters, e.g. `?origin=Union+Station&destination=Yorkdale&lam=2`.
 - **Changing jurisdiction:** the province has announced it will take over the Gardiner and
   DVP; if their crashes move to OPP records, the attribution will need MTO data instead.
 - **Free-flow travel times:** congestion would make long freeway detours less attractive.
+- **Cross-city limits:** Ottawa geocodes crashes differently from Toronto Police, its 2023
+  data is unpublished, and its 2024 records change how minor-injury and non-reportable
+  collisions are coded; Ottawa's segment volumes come from Toronto's model with a level
+  correction chosen on Ottawa's intersection counts.
 
 ## Roadmap
 
-- **Phase 3: generalisation.** Done: a graph neural network against LightGBM and the SPF.
-  Next: a cross-city test on Ottawa collision data; a London, Ontario demo using the SPF
-  without local crash history.
-- **Phase 4: product.** A deployed demo, a model card, and time- and weather-aware risk.
+- **Phase 3: generalisation.** Done: a graph neural network against LightGBM and the SPF;
+  a cross-city test on Ottawa. Remaining: a London, Ontario demo.
+- **Phase 4: product.** A deployed demo and a model card; later, time- and weather-aware
+  risk.
 
 ## Repository layout
 
 ```
 configs/default.yaml        pipeline configuration (paths, thresholds, splits, proxy rules)
+configs/ottawa.yaml         Ottawa overrides (study area, years, services)
 src/safepath/data/          collisions, City traffic counts (AADT), MTO highway data
 src/safepath/features/      labels, proxy rules, road, history and volume features
 src/safepath/models/        baselines, LightGBM, volume model, SPF, EB, calibration
@@ -280,7 +331,8 @@ src/safepath/risk.py        per-vehicle risk onto the routing graph
 src/safepath/movements.py   turn-aware routing graph (U-turn penalty)
 src/safepath/routing.py     λ routing, k calibration, evaluation, sensitivity
 src/safepath/explain.py     SHAP and per-intersection risk factors
-src/safepath/gnn/           intersection graph, MLP / GraphSAGE / GATv2, training
+src/safepath/gnn/           intersection graph, MLP / GraphSAGE / GATv2, training, transfer
+src/safepath/ottawa/        Ottawa build, volume and crash-model transfer, report
 src/safepath/tracking.py    optional Weights & Biases logging
 src/safepath/app/           Streamlit app
 reports/                    generated reports and figures
@@ -293,6 +345,8 @@ tests/                      unit tests (leakage, calibration, routing, snapping,
   [Open Government Licence – Toronto](https://open.toronto.ca/open-data-license/).
 - Traffic counts: City of Toronto, *Traffic Volumes* (turning movement and speed / volume /
   classification counts), Open Government Licence – Toronto.
+- Ottawa collisions, intersection traffic counts and urban boundary: City of Ottawa open
+  data (open.ottawa.ca), Open Government Licence – City of Ottawa.
 - Provincial highway volumes and collision rates: Ontario Ministry of Transportation,
   Technical Publications, [Open Government Licence – Ontario](https://www.ontario.ca/page/open-government-licence-ontario).
 - Road network, points of interest and basemap tiles: © [OpenStreetMap](https://www.openstreetmap.org/copyright)
