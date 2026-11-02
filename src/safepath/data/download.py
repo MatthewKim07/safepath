@@ -1,4 +1,4 @@
-"""Download Toronto Police Service collision records from the ArcGIS FeatureServer.
+"""Download ArcGIS FeatureServer layers; used for the TPS collision records and Ottawa's layers.
 
 Pages are fetched as fixed OBJECTID windows (`lo < OBJECTID <= hi`, width = page size), so
 every page is independent: each is cached as gzipped JSON, reruns skip cached windows, and an
@@ -65,30 +65,53 @@ def objectid_windows(min_id: int, max_id: int, size: int) -> list[tuple[int, int
     return [(lo, min(lo + size, max_id)) for lo in range(min_id - 1, max_id, size)]
 
 
-class CollisionDownloader:
-    def __init__(self, cfg: dict[str, Any]):
-        dl = cfg["download"]
-        self.url = dl["url"]
-        self.page_size = int(dl["page_size"])
-        self.timeout = float(dl["timeout_seconds"])
-        self.max_retries = int(dl["max_retries"])
-        self.backoff = float(dl["backoff_seconds"])
-        self.workers = int(dl.get("workers", 1))
-        self.page_dir = Path(cfg["paths"]["page_cache_dir"])
-        self.out_path = Path(cfg["paths"]["raw_dir"]) / RAW_FILENAME
+class LayerDownloader:
+    """Download every record of one ArcGIS feature layer into a single parquet file.
+
+    Works on any layer with an integer object-id field: `oid_field` and the page size default
+    to the layer's own objectIdField and maxRecordCount. With `geometry=True` point
+    geometries are requested in WGS84 and stored as `geom_lon` / `geom_lat`.
+    """
+
+    def __init__(
+        self,
+        url: str,
+        page_dir: Path,
+        out_path: Path,
+        *,
+        oid_field: str | None = None,
+        page_size: int | None = None,
+        timeout: float = 60.0,
+        max_retries: int = 6,
+        backoff: float = 2.0,
+        workers: int = 1,
+        geometry: bool = False,
+    ):
+        self.url = url
+        self.page_dir = Path(page_dir)
+        self.out_path = Path(out_path)
+        self.timeout, self.max_retries, self.backoff = timeout, max_retries, backoff
+        self.workers = workers
+        self.geometry = geometry
         self.session = requests.Session()
+        if oid_field is None or page_size is None:
+            meta = self._query_url(url.removesuffix("/query"))
+            oid_field = oid_field or meta["objectIdField"]
+            page_size = page_size or int(meta.get("maxRecordCount") or 1000)
+        self.oid_field, self.page_size = oid_field, int(page_size)
+
+    def _query_url(self, url: str, **params: Any) -> dict[str, Any]:
+        return get_json(self.session, url, params, self.timeout, self.max_retries, self.backoff)
 
     def _query(self, **params: Any) -> dict[str, Any]:
-        return get_json(
-            self.session, self.url, params, self.timeout, self.max_retries, self.backoff
-        )
+        return self._query_url(self.url, **params)
 
     def count(self) -> int:
         return int(self._query(where="1=1", returnCountOnly="true")["count"])
 
     def objectid_range(self) -> tuple[int, int]:
         stats = [
-            {"statisticType": s, "onStatisticField": "OBJECTID", "outStatisticFieldName": s}
+            {"statisticType": s, "onStatisticField": self.oid_field, "outStatisticFieldName": s}
             for s in ("min", "max")
         ]
         attrs = self._query(where="1=1", outStatistics=json.dumps(stats))["features"][0][
@@ -103,16 +126,25 @@ class CollisionDownloader:
         path = self._page_path(lo, hi)
         if path.exists():
             return path
-        body = self._query(
-            where=f"OBJECTID > {lo} AND OBJECTID <= {hi}",
-            outFields="*",
-            returnGeometry="false",
-            orderByFields="OBJECTID ASC",
-            resultRecordCount=self.page_size,
-        )
+        params: dict[str, Any] = {
+            "where": f"{self.oid_field} > {lo} AND {self.oid_field} <= {hi}",
+            "outFields": "*",
+            "returnGeometry": "true" if self.geometry else "false",
+            "orderByFields": f"{self.oid_field} ASC",
+            "resultRecordCount": self.page_size,
+        }
+        if self.geometry:
+            params["outSR"] = 4326
+        body = self._query(**params)
         if body.get("exceededTransferLimit"):
             raise ArcGISError(f"window ({lo}, {hi}] exceeded the transfer limit")
-        rows = [feat["attributes"] for feat in body.get("features", [])]
+        rows = []
+        for feat in body.get("features", []):
+            row = dict(feat["attributes"])
+            if self.geometry:
+                geom = feat.get("geometry") or {}
+                row["geom_lon"], row["geom_lat"] = geom.get("x"), geom.get("y")
+            rows.append(row)
         tmp = path.with_suffix(".tmp")
         with gzip.open(tmp, "wt") as f:
             json.dump(rows, f)
@@ -126,8 +158,10 @@ class CollisionDownloader:
         windows = objectid_windows(min_id, max_id, self.page_size)
         todo = [w for w in windows if not self._page_path(*w).exists()]
         log.info(
-            "service reports %d records, OBJECTID %d..%d: %d pages (%d cached)",
+            "%s: service reports %d records, %s %d..%d: %d pages (%d cached)",
+            self.out_path.name,
             expected,
+            self.oid_field,
             min_id,
             max_id,
             len(windows),
@@ -145,17 +179,36 @@ class CollisionDownloader:
                 frames.append(pd.DataFrame.from_records(json.load(f)))
         df = pd.concat(frames, ignore_index=True)
 
-        n_dup_oid = int(df["OBJECTID"].duplicated().sum())
+        n_dup_oid = int(df[self.oid_field].duplicated().sum())
         if n_dup_oid:
-            raise ArcGISError(f"{n_dup_oid} duplicate OBJECTIDs across pages")
+            raise ArcGISError(f"{n_dup_oid} duplicate {self.oid_field}s across pages")
         if len(df) != expected:
             raise ArcGISError(f"downloaded {len(df)} rows but the service reports {expected}")
         log.info("downloaded %d rows, matches returnCountOnly", len(df))
 
         self.out_path.parent.mkdir(parents=True, exist_ok=True)
-        df.sort_values("OBJECTID").reset_index(drop=True).to_parquet(self.out_path, index=False)
+        df = df.sort_values(self.oid_field).reset_index(drop=True)
+        df.to_parquet(self.out_path, index=False)
         log.info("wrote %s", self.out_path)
         return self.out_path
+
+
+class CollisionDownloader(LayerDownloader):
+    """The TPS collision layer, configured from `download` in the config."""
+
+    def __init__(self, cfg: dict[str, Any]):
+        dl = cfg["download"]
+        super().__init__(
+            dl["url"],
+            Path(cfg["paths"]["page_cache_dir"]),
+            Path(cfg["paths"]["raw_dir"]) / RAW_FILENAME,
+            oid_field="OBJECTID",
+            page_size=int(dl["page_size"]),
+            timeout=float(dl["timeout_seconds"]),
+            max_retries=int(dl["max_retries"]),
+            backoff=float(dl["backoff_seconds"]),
+            workers=int(dl.get("workers", 1)),
+        )
 
 
 def download_collisions(cfg: dict[str, Any]) -> Path:
