@@ -44,7 +44,7 @@ def test_layer_fetch_failure_raises_and_writes_no_cache(tmp_path, monkeypatch):
     def fail(*args, **kwargs):
         raise RuntimeError("HTTP 429 Too Many Requests")
 
-    monkeypatch.setattr(osm_context.ox, "features_from_place", fail)
+    monkeypatch.setattr(osm_context, "osm_features", fail)
     with pytest.raises(FetchError, match="layer 'tram' failed after 2 attempts"):
         osm_context.load_or_fetch_layer(cfg, "tram")
     assert not list(tmp_path.glob("osm_*.parquet"))

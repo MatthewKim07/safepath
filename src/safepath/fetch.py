@@ -65,3 +65,55 @@ def fetch_settings(cfg: dict[str, Any]) -> dict[str, float]:
         "attempts": int(osm.get("fetch_attempts", 3)),
         "backoff_seconds": float(osm.get("backoff_seconds", 15.0)),
     }
+
+
+STUDY_AREA = "study_area.geojson"
+
+
+def study_area(cfg: dict[str, Any]) -> Any:
+    """What OSM is fetched for: the `graph.place` name (Toronto), or the polygon of the
+    `graph.boundary` ArcGIS layer (Ottawa's urban boundary), cached as GeoJSON in raw_dir.
+    Returns a place string or a shapely (Multi)Polygon in WGS84."""
+    g = cfg["graph"]
+    if g.get("place"):
+        return g["place"]
+    boundary = g.get("boundary")
+    if not boundary:
+        raise ValueError("config needs graph.place or graph.boundary")
+    path = Path(cfg["paths"]["raw_dir"]) / STUDY_AREA
+    if not path.exists():
+        import requests
+
+        def get() -> bytes:
+            resp = requests.get(
+                f"{boundary['url']}/query",
+                params={"where": "1=1", "outSR": 4326, "f": "geojson", "returnGeometry": "true"},
+                timeout=120,
+            )
+            resp.raise_for_status()
+            if b'"features"' not in resp.content:
+                raise FetchError(f"boundary layer returned no features: {resp.text[:200]}")
+            return resp.content
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(with_retries(get, "study-area boundary fetch", **fetch_settings(cfg)))
+    import geopandas as gpd
+
+    gdf = require_rows(gpd.read_file(path), "study-area boundary")
+    return gdf.to_crs("EPSG:4326").union_all()
+
+
+def osm_features(cfg: dict[str, Any], tags: dict[str, Any]) -> Any:
+    """OSM features with `tags` inside the study area."""
+    area = study_area(cfg)
+    if isinstance(area, str):
+        return ox.features_from_place(area, tags=tags)
+    return ox.features_from_polygon(area, tags=tags)
+
+
+def osm_drive_graph(cfg: dict[str, Any]) -> Any:
+    area = study_area(cfg)
+    kind = cfg["graph"]["network_type"]
+    if isinstance(area, str):
+        return ox.graph_from_place(area, network_type=kind, simplify=True)
+    return ox.graph_from_polygon(area, network_type=kind, simplify=True)

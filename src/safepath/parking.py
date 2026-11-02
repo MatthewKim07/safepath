@@ -7,9 +7,14 @@ from pathlib import Path
 from typing import Any
 
 import geopandas as gpd
-import osmnx as ox
 
-from safepath.fetch import configure_osmnx, fetch_settings, require_rows, with_retries
+from safepath.fetch import (
+    configure_osmnx,
+    fetch_settings,
+    osm_features,
+    require_rows,
+    with_retries,
+)
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +44,7 @@ def load_or_fetch_parking(cfg: dict[str, Any]) -> gpd.GeoDataFrame:
         return gpd.read_parquet(path)
     configure_osmnx(cfg)
     raw = with_retries(
-        lambda: ox.features_from_place(cfg["graph"]["place"], tags=PARKING_TAGS),
+        lambda: osm_features(cfg, PARKING_TAGS),
         what="OSM fetch of parking polygons",
         **fetch_settings(cfg),
     )

@@ -1,9 +1,10 @@
-"""Build the Toronto drive graph, consolidated intersections, and the undirected segment view.
+"""Build a city's drive graph, consolidated intersections, and the undirected segment view.
 
-Outputs in data/processed/:
-- toronto_drive.graphml            directed graph with speeds and travel times (WGS84)
-- toronto_drive_proj.graphml       the same graph projected to UTM 17N, used for routing
-- toronto_intersections.graphml    consolidated-intersection graph at the chosen tolerance
+The city is the config's study area (`graph.place`, or the `graph.boundary` polygon).
+Outputs in the config's processed_dir:
+- drive.graphml                    directed graph with speeds and travel times (WGS84)
+- drive_proj.graphml               the same graph projected to the city's UTM zone (routing)
+- consolidated.graphml             consolidated-intersection graph at the chosen tolerance
 - intersections.parquet            one row per consolidated intersection (GeoParquet)
 - intersections_tol{T}.parquet     the same for every candidate tolerance, for comparison
 - node_to_intersection.parquet     original OSM node -> intersection_id
@@ -25,14 +26,20 @@ import numpy as np
 import osmnx as ox
 import pandas as pd
 
-from safepath.fetch import configure_osmnx, fetch_settings, require_rows, with_retries
+from safepath.fetch import (
+    configure_osmnx,
+    fetch_settings,
+    osm_drive_graph,
+    require_rows,
+    with_retries,
+)
 from safepath.parking import load_or_fetch_parking
 
 log = logging.getLogger(__name__)
 
-RAW_GRAPH = "toronto_drive.graphml"
-PROJ_GRAPH = "toronto_drive_proj.graphml"
-CONS_GRAPH = "toronto_intersections.graphml"
+RAW_GRAPH = "drive.graphml"
+PROJ_GRAPH = "drive_proj.graphml"
+CONS_GRAPH = "consolidated.graphml"
 INTERSECTIONS = "intersections.parquet"
 NODE_MAP = "node_to_intersection.parquet"
 SEGMENTS = "segments.parquet"
@@ -52,8 +59,8 @@ def _as_list(value: Any) -> list:
     return value if isinstance(value, list) else [value]
 
 
-def download_graph(place: str, network_type: str) -> nx.MultiDiGraph:
-    G = ox.graph_from_place(place, network_type=network_type, simplify=True)
+def download_graph(cfg: dict[str, Any]) -> nx.MultiDiGraph:
+    G = osm_drive_graph(cfg)
     G = ox.add_edge_speeds(G)
     return ox.add_edge_travel_times(G)
 
@@ -66,10 +73,9 @@ def load_or_build_projected(cfg: dict[str, Any]) -> nx.MultiDiGraph:
     if raw_path.exists():
         G = ox.load_graphml(raw_path)
     else:
-        g = cfg["graph"]
         t0 = time.time()
         G = with_retries(
-            lambda: download_graph(g["place"], g["network_type"]),
+            lambda: download_graph(cfg),
             what="OSM drive graph download",
             **fetch_settings(cfg),
         )

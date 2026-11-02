@@ -277,9 +277,10 @@ def build_model_table(
         "Built per label year Y from years strictly before Y (see `features/history.py` and "
         "the leakage test in `tests/test_history.py`): prev1 and prev3-mean crash and severe "
         "counts, the same as shares of the citywide intersection total of those years, years "
-        "since the last crash (capped at 3), and `covid_in_window` when Y-3..Y-1 touches "
-        "2020-2021. Label year 2016 only has 2014-2015 behind it, so its prev3 mean is over "
-        "two years (`n_history_years`).",
+        "since the last crash (capped at 3), and `covid_in_window` when the window touches "
+        "2020-2021. The window is the three most recent years with data before Y; the first "
+        "label years have fewer behind them (`n_history_years`), and an unpublished year is "
+        "skipped rather than read as zero.",
         "",
         "## Drift check (clean intersections)",
         "",

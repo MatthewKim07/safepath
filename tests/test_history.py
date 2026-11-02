@@ -81,3 +81,23 @@ def test_years_since_cap_and_covid_flag():
         2024: 1,
         2025: 0,
     }
+
+
+def test_missing_year_window_reaches_back_without_leaking():
+    """Ottawa 2023 is unpublished: 2024's window is 2020-2022 and prev1 is 2022."""
+    labels = _labels()
+    labels = labels[labels["year"] != 2023]
+    f = history_features(labels, [2024]).set_index("intersection_id")
+    wide = labels.pivot(index="intersection_id", columns="year", values="crash_count")
+    pd.testing.assert_series_equal(
+        f["prev1_crashes"], wide[2022], check_names=False, check_dtype=False
+    )
+    np.testing.assert_allclose(f["prev3_crashes_mean"], wide[[2020, 2021, 2022]].mean(axis=1))
+    assert (f["covid_in_window"] == 1).all() and (f["n_history_years"] == 3).all()
+
+    future = labels["year"] >= 2024
+    perturbed = labels.copy()
+    perturbed.loc[future, "crash_count"] = 999
+    pd.testing.assert_frame_equal(
+        history_features(labels, [2024]), history_features(perturbed, [2024])
+    )

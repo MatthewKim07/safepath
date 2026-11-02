@@ -1,9 +1,11 @@
 """Intersection-year labels, splits, and proxy exclusions.
 
-Every consolidated intersection gets one row per year 2014-2025, zero-crash years included.
-Split by label year: train 2016-2019 + 2022-2023, val 2024, test 2025; 2014-2015 and
-2020-2021 are history only (used for lagged features, never as labels); 2026 is partial and
-dropped.
+Every consolidated intersection gets one row per available year, zero-crash years included.
+Toronto: 2014-2025; split by label year: train 2016-2019 + 2022-2023, val 2024, test 2025;
+2014-2015 and 2020-2021 are history only (used for lagged features, never as labels); 2026
+is partial and dropped. Another city sets `labels.first_year` / `last_year` and lists
+unpublished years in `labels.missing_years` (Ottawa 2023): those years get no rows at all,
+rather than rows of zeros.
 """
 
 from __future__ import annotations
@@ -41,10 +43,20 @@ def crash_counts(assignments: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def label_years(cfg: dict[str, Any]) -> list[int]:
+    lab = cfg.get("labels", {})
+    first, last = lab.get("first_year", FIRST_YEAR), lab.get("last_year", LAST_YEAR)
+    missing = set(lab.get("missing_years", []))
+    return [y for y in range(first, last + 1) if y not in missing]
+
+
 def label_table(
-    counts: pd.DataFrame, intersection_ids: pd.Series, splits: dict[str, list[int]]
+    counts: pd.DataFrame,
+    intersection_ids: pd.Series,
+    splits: dict[str, list[int]],
+    years: list[int] | None = None,
 ) -> pd.DataFrame:
-    years = range(FIRST_YEAR, LAST_YEAR + 1)
+    years = years if years is not None else list(range(FIRST_YEAR, LAST_YEAR + 1))
     grid = pd.MultiIndex.from_product(
         [sorted(intersection_ids), years], names=["intersection_id", "year"]
     ).to_frame(index=False)
@@ -70,7 +82,10 @@ def build_labels(cfg: dict[str, Any], exclusions: pd.DataFrame) -> pd.DataFrame:
     processed = Path(cfg["paths"]["processed_dir"])
     intersections = pd.read_parquet(processed / INTERSECTIONS, columns=["intersection_id"])
     labels = label_table(
-        crash_counts(load_assignments(cfg)), intersections["intersection_id"], cfg["splits"]
+        crash_counts(load_assignments(cfg)),
+        intersections["intersection_id"],
+        cfg["splits"],
+        label_years(cfg),
     )
     labels = labels.merge(
         exclusions[["intersection_id", "exclusion_reason"]], on="intersection_id", how="left"

@@ -20,13 +20,13 @@ from scipy.spatial import cKDTree
 from safepath.features.build import STATIC
 from safepath.features.centrality import edge_betweenness
 from safepath.features.roads import class_rank
-from safepath.features.static import TRUTHY, count_within, first_number
+from safepath.features.static import NO_TRAM_M, TRUTHY, count_within, first_number
 from safepath.graph import EDGE_MAP, NODE_MAP, PROJ_GRAPH, SEGMENTS
 from safepath.locations import MOTORWAY_CLASSES
 
 EDGE_CENTRALITY = "edge_centrality.parquet"
 INTERSECTION_EXPOSURE = "intersection_exposure.parquet"
-DOWNTOWN = (43.6453, -79.3806)  # Union Station
+DOWNTOWN = (43.6453, -79.3806)  # Union Station; other cities set graph.downtown
 # global: random sources, every destination; local: destinations within 5 minutes
 CENTRALITY = {"bt_global": {"n_sources": 2000}, "bt_local": {"n_sources": 5000, "limit": 300}}
 
@@ -51,8 +51,8 @@ def edge_centrality(cfg: dict[str, Any]) -> pd.DataFrame:
     return out
 
 
-def downtown_xy(crs: str) -> tuple[float, float]:
-    lat, lon = DOWNTOWN
+def downtown_xy(cfg: dict[str, Any], crs: str) -> tuple[float, float]:
+    lat, lon = cfg["graph"].get("downtown") or DOWNTOWN
     return Transformer.from_crs("EPSG:4326", crs, always_xy=True).transform(lon, lat)
 
 
@@ -70,7 +70,7 @@ def intersection_features(
     out["bt_local_in"] = g["bt_local"].sum().reindex(out.index).fillna(0)
     out["bt_global_in_max"] = g["bt_global"].max().reindex(out.index).fillna(0)
     xy = intersections.set_index("intersection_id").loc[out.index, ["x", "y"]].to_numpy()
-    dx, dy = downtown_xy(intersections.crs)
+    dx, dy = downtown_xy(cfg, intersections.crs)
     out["dist_downtown_m"] = np.hypot(xy[:, 0] - dx, xy[:, 1] - dy)
     out["n_intersections_500m"] = cKDTree(xy).query_ball_point(xy, r=500, return_length=True)
     out["x"], out["y"] = xy[:, 0], xy[:, 1]
@@ -142,10 +142,14 @@ def segment_features(
     seg["n_pois_100m"] = count_within(xy, layers["pois"].to_crs(seg.crs), 100)
     seg["n_bus_stops_50m"] = count_within(xy, layers["bus_stops"].to_crs(seg.crs), 50)
     tram = gpd.read_parquet(processed / "osm_tram.parquet").to_crs(seg.crs)
-    seg["dist_tram_m"] = gpd.GeoSeries(mid, crs=seg.crs).distance(tram.union_all()).to_numpy()
+    seg["dist_tram_m"] = (
+        gpd.GeoSeries(mid, crs=seg.crs).distance(tram.union_all()).to_numpy()
+        if len(tram)
+        else NO_TRAM_M
+    )
     motorway = seg[seg["highway"].isin(MOTORWAY_CLASSES)].union_all()
     seg["dist_motorway_m"] = mid.distance(motorway).to_numpy()
-    dx, dy = downtown_xy(seg.crs)
+    dx, dy = downtown_xy(cfg, seg.crs)
     seg["dist_downtown_m"] = np.hypot(xy[:, 0] - dx, xy[:, 1] - dy)
     ixy = inter_feats[["x", "y"]].to_numpy()
     seg["n_intersections_500m"] = cKDTree(ixy).query_ball_point(xy, r=500, return_length=True)

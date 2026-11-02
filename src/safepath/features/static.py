@@ -21,6 +21,9 @@ from safepath.locations import MOTORWAY_CLASSES, nearest
 LEG_MERGE_DEG = 30  # approach bearings closer than this are one leg (e.g. divided carriageways)
 BEARING_SAMPLE_M = 20  # bearing measured from the intersection to this far along the approach
 TRUTHY = {"yes", "viaduct", "movable", "building_passage", "True", "true"}
+# distance used when a city has no on-street tram at all (Ottawa): farther than any Toronto
+# intersection is from a streetcar line, so trees treat it as "none nearby"
+NO_TRAM_M = 100_000.0
 
 
 def first_number(value: Any) -> float:
@@ -134,7 +137,8 @@ def context_features(
     out["has_signal"] = out["n_signals_30m"] > 0
     out["n_bus_stops_50m"] = count_within(xy, layers["bus_stops"], 50)
     out["n_pois_100m"] = count_within(xy, layers["pois"], 100)
-    out["dist_tram_m"] = nearest_dist(intersections, layers["tram"])
+    tram = layers["tram"]
+    out["dist_tram_m"] = nearest_dist(intersections, tram) if len(tram) else NO_TRAM_M
     out["streetcar_20m"] = out["dist_tram_m"] <= 20
     out["dist_motorway_m"] = nearest_dist(
         intersections, segments[segments["highway"].isin(MOTORWAY_CLASSES)]

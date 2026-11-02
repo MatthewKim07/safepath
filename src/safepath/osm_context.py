@@ -1,7 +1,9 @@
 """OSM context layers around intersections: retail areas, traffic control, transit, POIs.
 
-Each layer is fetched once with `features_from_place`, projected, and cached as GeoParquet in
-data/processed/. Point-like layers are reduced to points (polygon centroids).
+Each layer is fetched once for the study area, projected, and cached as GeoParquet in the
+processed dir. A layer listed in `osm.allow_empty_layers` may legitimately be empty (Ottawa
+has no on-street tram); every other empty layer is a failed fetch. Point-like layers are
+reduced to points (polygon centroids).
 """
 
 from __future__ import annotations
@@ -13,7 +15,13 @@ from typing import Any
 import geopandas as gpd
 import osmnx as ox
 
-from safepath.fetch import configure_osmnx, fetch_settings, require_rows, with_retries
+from safepath.fetch import (
+    configure_osmnx,
+    fetch_settings,
+    osm_features,
+    require_rows,
+    with_retries,
+)
 
 log = logging.getLogger(__name__)
 
@@ -83,13 +91,26 @@ def load_or_fetch_layer(cfg: dict[str, Any], name: str) -> gpd.GeoDataFrame:
     if path.exists():
         return gpd.read_parquet(path)
     configure_osmnx(cfg)
-    raw = with_retries(
-        lambda: ox.features_from_place(cfg["graph"]["place"], tags=LAYERS[name]),
-        what=f"OSM fetch of layer '{name}'",
-        **fetch_settings(cfg),
-    )
+    may_be_empty = name in cfg.get("osm", {}).get("allow_empty_layers", [])
+
+    def fetch() -> gpd.GeoDataFrame:
+        try:
+            return osm_features(cfg, LAYERS[name])
+        except ox._errors.InsufficientResponseError:
+            if may_be_empty:  # OSMnx raises when nothing matches the tags
+                return gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
+            raise
+
+    raw = with_retries(fetch, what=f"OSM fetch of layer '{name}'", **fetch_settings(cfg))
+    if len(raw) == 0 and may_be_empty:
+        layer = gpd.GeoDataFrame({"railway": [], "name": []}, geometry=[], crs=cfg["graph"]["crs"])
+        layer.to_parquet(path)
+        log.info("osm layer %s: empty (allowed for this city)", name)
+        return layer
     require_rows(raw, f"OSM layer '{name}'")
-    layer = require_rows(_filter(name, raw.to_crs(cfg["graph"]["crs"])), f"filtered '{name}'")
+    layer = _filter(name, raw.to_crs(cfg["graph"]["crs"]))
+    if not may_be_empty:
+        require_rows(layer, f"filtered '{name}'")
     layer.to_parquet(path)
     log.info("osm layer %s: kept %d of %d features", name, len(layer), len(raw))
     return layer
