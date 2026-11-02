@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from safepath import tracking
 from safepath.data.aadt import SVC_AADT, TMC_AADT
 from safepath.data.mto import MTO_SEGMENTS
 from safepath.data.report import BAR, GRID, SURFACE, TEXT, TEXT_MUTED
@@ -31,6 +32,7 @@ from safepath.models.volume import (
     EDGE_COLUMNS,
     INTERSECTION_FEATURES,
     MIN_TARGET_YEAR,
+    PARAMS,
     PREDICT_YEAR,
     SEGMENT_CLASSES,
     SEGMENT_FEATURES,
@@ -355,5 +357,19 @@ def run_volume_model(cfg: dict[str, Any]) -> dict[str, Any]:
         )
     )
     write_report(cfg, r, Path(cfg["paths"]["reports_dir"]) / "volume_model.md")
+    config = {"params": PARAMS, "centrality": CENTRALITY, "min_target_year": MIN_TARGET_YEAR,
+              "predict_year": PREDICT_YEAR, "cv": "5-fold, 2 km spatial blocks"}  # fmt: skip
+    with tracking.run(cfg, "volume-model", "volume-model", config) as wb:
+        for unit in ("inter", "seg"):
+            m = r[unit]["metrics"]
+            overall = m[m.iloc[:, 0] == "all"].set_index("model")
+            wb.summary({f"{unit}/{model}/{k}": overall.loc[model, k]
+                        for model in overall.index for k in ("rmse_log", "median_abs_pct_err",
+                                                              "r2_log")})  # fmt: skip
+            wb.table(f"{unit}_cv_metrics", m)
+        wb.table("count_blend", r["blend_table"])
+        wb.table("expressways", r["expressways"])
+        for fig in ("volume_pred_vs_obs.png", "volume_importance.png"):
+            wb.image(fig.removesuffix(".png"), figures / fig)
     log.info("AADT for %d intersections and %d directed edges", len(out_i), len(edges))
     return r

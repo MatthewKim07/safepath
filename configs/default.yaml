@@ -103,3 +103,9 @@ mto:
   latest_year: 2024
   fetch_attempts: 3
   backoff_seconds: 15
+
+tracking:
+  # Weights & Biases. Off automatically without WANDB_API_KEY (env or .env) or with --no-wandb.
+  enabled: true
+  project: safepath
+  entity: null

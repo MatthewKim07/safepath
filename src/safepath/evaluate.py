@@ -19,6 +19,7 @@ import pandas as pd
 from scipy.stats import spearmanr
 from sklearn.metrics import average_precision_score, mean_poisson_deviance, roc_auc_score
 
+from safepath import tracking
 from safepath.data.report import BAR, GRID, SURFACE, TEXT, TEXT_MUTED
 from safepath.locations import markdown_table
 from safepath.models import lgbm
@@ -541,6 +542,14 @@ def run_comparison(cfg: dict[str, Any], rows: pd.DataFrame) -> dict[str, Any]:
     hot = rate_hotspots(cfg)
     (reports / "model_comparison.json").write_text(json.dumps(results, indent=2))
     write_comparison_md(results, hot, reports / "model_comparison.md")
+    with tracking.run(cfg, "model-comparison", "evaluate", {"n_boot": N_BOOT}) as wb:
+        for split in ("val", "test"):
+            wb.table(f"{split}_metrics", comparison_table(results[split]))
+            wb.table(f"{split}_paired", paired_table(results[split]))
+            wb.summary({f"{split}/{m}/{k}": results[split]["models"][m][k]
+                        for m in COMPARE_MODELS for k in ("spearman", "recall_top5",
+                                                          "poisson_deviance")})  # fmt: skip
+        wb.image("calibration_cp6", figures / "calibration_cp6.png")
     return results
 
 

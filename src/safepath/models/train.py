@@ -11,6 +11,7 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
+from safepath import tracking
 from safepath.features.build import MODEL_TABLE
 from safepath.features.volume_features import INTERSECTION_EXPOSURE
 from safepath.graph import INTERSECTIONS
@@ -166,5 +167,15 @@ def run_train(cfg: dict[str, Any]) -> dict[str, Any]:
         "label_years": "all clean train/val/test years",
     }
     (out / "training_summary.json").write_text(json.dumps(summary, indent=2))
+    for name, info in summary["models"].items():
+        config = {"feature_set": info["feature_set"], "target": info["target"],
+                  "n_features": info["n_features"], "base_params": lgbm.BASE_PARAMS,
+                  "grid": lgbm.GRID, "train_years": cfg["splits"]["train"],
+                  "early_stopping": "val 2024"}  # fmt: skip
+        with tracking.run(cfg, f"train-{name}", "train", config) as wb:
+            wb.summary({"best_params": info["best_params"],
+                        "best_iteration": info["best_iteration"],
+                        "best_val_poisson": info["best_val_poisson"]})  # fmt: skip
+            wb.table("grid_search", pd.DataFrame(info["search"]))
     log.info("trained %d models on %d rows", len(MODELS), len(train))
     return summary

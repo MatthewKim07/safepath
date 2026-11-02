@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_poisson_deviance
 
+from safepath import tracking
 from safepath.features.labels import LABELS
 from safepath.locations import markdown_table
 from safepath.models.spf import DEVIANCE_FLOOR, SPF_PREDICTIONS, year_levels
@@ -128,5 +129,8 @@ def run_eb(cfg: dict[str, Any]) -> pd.DataFrame:
         "Busy intersections lean on their own history (small w); quiet ones on the SPF.",
     ]
     (Path(cfg["paths"]["reports_dir"]) / "eb.md").write_text("\n".join(lines) + "\n")
+    with tracking.run(cfg, "eb", "eb", {"windows": WINDOWS, "chosen_window": window}) as wb:
+        wb.table("window_selection", selection)
+        wb.summary({"median_weight_on_spf_2026": float(w.median())})
     log.info("EB with a %d-year window for %d intersection-years", window, len(out))
     return out

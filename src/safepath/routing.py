@@ -31,6 +31,7 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import dijkstra
 from scipy.spatial import cKDTree
 
+from safepath import tracking
 from safepath.data.report import BAR, GRID, SURFACE, TEXT, TEXT_MUTED
 from safepath.graph import NODE_MAP, SEGMENTS
 from safepath.locations import MOTORWAY_CLASSES, markdown_table
@@ -591,6 +592,18 @@ def run_routing(cfg: dict[str, Any]) -> dict[str, Any]:
     write_routing_report(
         calib, summary, sweep, per_route_s, cp4, cp6, case, sens, reports / "routing.md"
     )
+    with tracking.run(cfg, "routing-eval", "routing", {"pairs": len(pairs), "lambdas": lambdas,
+                      "u_turn_penalty_s": U_TURN_PENALTY_S}) as wb:  # fmt: skip
+        wb.summary({"k_seconds_per_crash_per_million_trips": calib["k_seconds_per_crash"],
+                    "ms_per_route": 1000 * per_route_s})  # fmt: skip
+        wb.table("tradeoff", summary)
+        wb.table("versions", version_table(cp4, cp6, summary))
+        wb.table("sensitivity", sensitivity_table(sens))
+        for fig in (
+            "before_after_union_yorkdale.png",
+            *[f"pareto_{p}.png" for p in sweep["pair"].unique()],
+        ):
+            wb.image(fig.removesuffix(".png"), figures / fig)
     log.info("k = %.1f s per crash per million trips; wrote routing report",
              calib["k_seconds_per_crash"])  # fmt: skip
     return {"calibration": calib, "summary": summary, "case": case, "sensitivity": sens}

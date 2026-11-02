@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import subprocess
 import sys
 from collections.abc import Callable
@@ -30,6 +31,7 @@ from safepath.risk import run_score
 from safepath.routing import run_routing
 from safepath.snap_report import run_snap_report
 from safepath.snapping import run_snap
+from safepath.tracking import DISABLE_ENV
 
 log = logging.getLogger("safepath")
 
@@ -100,6 +102,7 @@ PIPELINE = [
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="safepath", description=__doc__)
     parser.add_argument("--config", default=None, help="path to a YAML config")
+    parser.add_argument("--no-wandb", action="store_true", help="do not log to Weights & Biases")
     sub = parser.add_subparsers(dest="step", required=True, metavar="<step>")
     for name, (help_text, _) in STEPS.items():
         sub.add_parser(name, help=help_text)
@@ -111,6 +114,8 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = build_parser().parse_args(argv)
     cfg = load_config(args.config)
+    if args.no_wandb:
+        os.environ[DISABLE_ENV] = "1"
     steps = PIPELINE if args.step == "all" else [args.step]
     for step in steps:
         log.info("running step '%s'", step)

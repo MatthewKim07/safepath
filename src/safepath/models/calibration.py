@@ -40,6 +40,7 @@ import statsmodels.formula.api as smf
 from matplotlib.ticker import FuncFormatter
 from sklearn.metrics import mean_poisson_deviance
 
+from safepath import tracking
 from safepath.data.report import BAR, GRID, SURFACE, TEXT, TEXT_MUTED
 from safepath.features.volume_features import INTERSECTION_EXPOSURE
 from safepath.locations import markdown_table
@@ -340,5 +341,13 @@ def run_calibration(cfg: dict[str, Any]) -> dict[str, Any]:
         "pred_tables": pred_tables,
     }
     write_report(r, Path(cfg["paths"]["reports_dir"]) / "calibration.md")
+    with tracking.run(cfg, "calibration", "calibration", {"formulas": FORMULAS}) as wb:
+        wb.table("candidates", metrics)
+        for split in ("val", "test"):
+            for key in ("before", "after"):
+                wb.table(f"{split}_aadt_deciles_{key}", tables[split][key])
+        wb.summary({"chosen": chosen})
+        wb.image("calibration_by_volume", Path(cfg["paths"]["figures_dir"]) /
+                 "calibration_by_volume.png")  # fmt: skip
     log.info("calibration: chose %s", chosen)
     return r

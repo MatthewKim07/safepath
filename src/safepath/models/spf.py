@@ -28,6 +28,7 @@ import statsmodels.api as sm
 from sklearn.metrics import mean_poisson_deviance
 from statsmodels.discrete.discrete_model import NegativeBinomial
 
+from safepath import tracking
 from safepath.features.build import STATIC
 from safepath.features.labels import LABELS
 from safepath.features.volume_features import INTERSECTION_EXPOSURE
@@ -320,5 +321,10 @@ def run_spf(cfg: dict[str, Any]) -> dict[str, Any]:
         "levels": year_levels(df, out["spf_base"]),
     }
     write_report(r, Path(cfg["paths"]["reports_dir"]) / "spf.md")
+    with tracking.run(cfg, "spf", "spf", {"groups": GROUPS, "chosen": chosen}) as wb:
+        wb.table("selection", selection)
+        wb.table("elasticities", elasticity_table(models))
+        wb.table("coefficients", coefficient_table(models))
+        wb.summary({f"k/{g}": m["k"] for g, m in models.items()})
     log.info("SPF: %s, val deviance %s", chosen, selection.to_dict(orient="records"))
     return r
