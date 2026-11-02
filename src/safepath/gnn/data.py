@@ -52,6 +52,7 @@ class GraphData:
     split: dict[str, list[int]]  # split name -> list of year positions
     feature_names: list[str]
     aadt: torch.Tensor  # (N,) entering AADT, for per-vehicle calibration
+    stats: dict[str, Any] | None = None  # standardisation and categories, for another city
 
     def year_index(self, year: int) -> int:
         return self.years.index(year)
@@ -62,7 +63,8 @@ def node_table(cfg: dict[str, Any], labels: pd.DataFrame | None = None) -> pd.Da
     counts and the exclusion flag. History is rebuilt from `labels` (default: on disk)."""
     processed = Path(cfg["paths"]["processed_dir"])
     labels = pd.read_parquet(processed / LABELS) if labels is None else labels
-    years = sorted(cfg["splits"]["train"] + cfg["splits"]["val"] + cfg["splits"]["test"])
+    sp = cfg["splits"]
+    years = sorted(sp["train"] + sp["val"] + sp["test"] + sp.get("calibration", []))
     hist = history_features(labels, years)
     static = pd.read_parquet(processed / STATIC)
     expo = pd.read_parquet(processed / INTERSECTION_EXPOSURE).set_index("intersection_id")
@@ -93,23 +95,36 @@ def standardise(X: pd.DataFrame, fit_rows: pd.Series) -> tuple[pd.DataFrame, dic
     return (X - mean) / std, {"mean": mean, "std": std}
 
 
-def build_graph(cfg: dict[str, Any], labels: pd.DataFrame | None = None) -> GraphData:
+def build_graph(
+    cfg: dict[str, Any],
+    labels: pd.DataFrame | None = None,
+    reference: dict[str, Any] | None = None,
+) -> GraphData:
+    """`reference` (another graph's `stats`) standardises nodes and edges and one-hot
+    encodes class combos the way that graph did, so its trained models apply here."""
     processed = Path(cfg["paths"]["processed_dir"])
     ids = pd.read_parquet(processed / INTERSECTIONS, columns=["intersection_id"])
     node_ids = np.sort(ids["intersection_id"].to_numpy())
     if not np.array_equal(node_ids, np.arange(len(node_ids))):
         raise ValueError("intersection ids are expected to be 0..N-1")
     pairs, ef = build_edges(cfg)
-    ef = (ef - ef.mean()) / ef.std().replace(0, 1.0)
+    e_mean = ef.mean() if reference is None else reference["edge_mean"]
+    e_std = ef.std().replace(0, 1.0) if reference is None else reference["edge_std"]
+    ef = (ef - e_mean) / e_std
     edge_index = torch.tensor(np.hstack([pairs, pairs[::-1]]), dtype=torch.long)
     edge_attr = torch.tensor(np.vstack([ef.to_numpy(), ef.to_numpy()]), dtype=torch.float32)
 
     df = node_table(cfg, labels).sort_values(["year", "intersection_id"]).reset_index(drop=True)
-    categories = sorted(df["class_combo"].unique())
-    X = feature_matrix(df, categories)
-    train_years = cfg["splits"]["train"]
-    fit = df["year"].isin(train_years) & ~df["is_excluded"]
-    X, _ = standardise(X, fit)
+    if reference is None:
+        categories = sorted(df["class_combo"].unique())
+        X = feature_matrix(df, categories)
+        fit = df["year"].isin(cfg["splits"]["train"]) & ~df["is_excluded"]
+        X, node_stats = standardise(X, fit)
+    else:
+        categories = reference["categories"]
+        X = feature_matrix(df, categories)
+        node_stats = {"mean": reference["node_mean"], "std": reference["node_std"]}
+        X = (X - node_stats["mean"]) / node_stats["std"]
     if X.isna().any().any():
         raise ValueError(f"NaN node features: {X.columns[X.isna().any()].tolist()}")
     years = sorted(int(t) for t in df["year"].unique())
@@ -118,13 +133,16 @@ def build_graph(cfg: dict[str, Any], labels: pd.DataFrame | None = None) -> Grap
     y = torch.tensor(df["crash_count"].to_numpy().reshape(len(years), n), dtype=torch.float32)
     clean = ~torch.tensor(df.loc[df["year"] == years[0], "is_excluded"].to_numpy().astype(bool))
     split = {
-        name: [years.index(t) for t in cfg["splits"][name]] for name in ("train", "val", "test")
+        name: [years.index(t) for t in cfg["splits"].get(name, [])]
+        for name in ("train", "val", "test", "calibration")
     }
     aadt = torch.tensor(
         df.loc[df["year"] == years[0], "entering_aadt"].to_numpy(), dtype=torch.float32
     )
+    stats = {"node_mean": node_stats["mean"], "node_std": node_stats["std"],
+             "edge_mean": e_mean, "edge_std": e_std, "categories": categories}  # fmt: skip
     return GraphData(node_ids, edge_index, edge_attr, years, x, y, clean, split,
-                     list(X.columns), aadt)  # fmt: skip
+                     list(X.columns), aadt, stats)  # fmt: skip
 
 
 def load_graph(cfg: dict[str, Any]) -> GraphData:
