@@ -434,6 +434,7 @@ def load_router(cfg: dict[str, Any], G: nx.MultiDiGraph | None = None) -> Router
 # --------------------------------------------------------------------------- sensitivity
 
 CP4_BASELINE = "cp4_baseline.json"
+CP6_BASELINE = "cp6_baseline.json"
 CITY_XWAY = ("Gardiner", "DVP", "Allen Road")
 
 
@@ -530,7 +531,7 @@ def plot_before_after(
     )
     styles = [
         (old, "#e34948", 5, f"CP4 safest, λ={lam:g}: count-based risk"),
-        (new, "#008300", 3.5, f"CP6 safest, λ={lam:g}: per-vehicle risk"),
+        (new, "#008300", 3.5, f"final safest, λ={lam:g}: per-vehicle risk"),
         (fast, TEXT_MUTED, 2, "fastest"),
     ]
     for route, color, width, label in styles:
@@ -548,7 +549,7 @@ def plot_before_after(
     ax.set_aspect("equal")
     ax.set_axis_off()
     ax.legend(loc="lower right", fontsize=8, frameon=False, labelcolor=TEXT)
-    ax.set_title("Union Station → Yorkdale: CP4 vs CP6 safest route (risk scored per vehicle)",
+    ax.set_title("Union Station → Yorkdale: count-based (CP4) vs per-vehicle safest route",
                  loc="left", fontsize=10, color=TEXT)  # fmt: skip
     fig.savefig(path, dpi=150, facecolor=SURFACE)
     plt.close(fig)
@@ -580,6 +581,7 @@ def run_routing(cfg: dict[str, Any]) -> dict[str, Any]:
         )
     sweep = pd.concat(sweeps)
     cp4 = json.loads((Path(cfg["paths"]["reports_dir"]) / CP4_BASELINE).read_text())
+    cp6 = json.loads((Path(cfg["paths"]["reports_dir"]) / CP6_BASELINE).read_text())
     segments = gpd.read_parquet(processed / SEGMENTS)
     case = plot_before_after(
         router, cp4["union_yorkdale_lambda2"], 2.0, segments,
@@ -587,25 +589,46 @@ def run_routing(cfg: dict[str, Any]) -> dict[str, Any]:
     )  # fmt: skip
     sens = run_sensitivity(cfg, router, pairs, lambdas)
     write_routing_report(
-        calib, summary, sweep, per_route_s, cp4, case, sens, reports / "routing.md"
+        calib, summary, sweep, per_route_s, cp4, cp6, case, sens, reports / "routing.md"
     )
     log.info("k = %.1f s per crash per million trips; wrote routing report",
              calib["k_seconds_per_crash"])  # fmt: skip
     return {"calibration": calib, "summary": summary, "case": case, "sensitivity": sens}
 
 
-def cp4_vs_cp6(cp4: dict[str, Any], summary: pd.DataFrame) -> pd.DataFrame:
-    old = pd.DataFrame(cp4["summary_200_trips"]).set_index("lam")
-    new = summary.set_index("lam")
+def version_table(cp4: dict[str, Any], cp6: dict[str, Any], summary: pd.DataFrame) -> pd.DataFrame:
+    versions = {
+        "CP4 (count-based)": pd.DataFrame(cp4["summary_200_trips"]).set_index("lam"),
+        "CP6 (per-vehicle, EB)": pd.DataFrame(cp6["summary_200_trips"]).set_index("lam"),
+        "CP7 (per-vehicle, recalibrated EB)": summary.set_index("lam"),
+    }
     cols = ["median extra min", "p90 extra min", "median % risk reduction",
             "median detour (km ratio)", "p90 detour (km ratio)", "motorway share",
             "residential share"]  # fmt: skip
     rows = []
-    for lam in new.index:
-        for label, src in (("CP4 (count-based)", old), ("CP6 (per-vehicle)", new)):
+    for lam in versions["CP7 (per-vehicle, recalibrated EB)"].index:
+        for label, src in versions.items():
             if lam in src.index:
                 rows.append({"λ": f"{lam:g}", "version": label, **src.loc[lam, cols].to_dict()})
     return pd.DataFrame(rows)
+
+
+def holds(cp6: dict[str, Any], summary: pd.DataFrame) -> list[str]:
+    """Plain statement of whether CP6's headline routing numbers survive recalibration."""
+    old = pd.DataFrame(cp6["summary_200_trips"]).set_index("lam")
+    new = summary.set_index("lam")
+    res_old, res_new = old.loc[1, "residential share"], new.loc[1, "residential share"]
+    cut_old, cut_new = old.loc[1, "median % risk reduction"], new.loc[1, "median % risk reduction"]
+    min_old, min_new = old.loc[1, "median extra min"], new.loc[1, "median extra min"]
+    res_word = "holds" if res_new <= 0.12 else "does not fully hold"
+    cut_word = "holds" if abs(cut_new - cut_old) <= 3 else "moved materially"
+    return [
+        f"- Residential share at λ = 1: {res_old:.0%} in CP6, {res_new:.0%} after "
+        f"recalibration; the drop from CP4's 21% {res_word}.",
+        f"- Median risk reduction at λ = 1: {cut_old:.1f}% in CP6, {cut_new:.1f}% now "
+        f"({cut_word}).",
+        f"- Median extra minutes at λ = 1: {min_old:.2f} in CP6, {min_new:.2f} now.",
+    ]
 
 
 def sensitivity_table(sens: pd.DataFrame) -> pd.DataFrame:
@@ -663,6 +686,7 @@ def write_routing_report(
     sweep: pd.DataFrame,
     per_route_s: float,
     cp4: dict[str, Any],
+    cp6: dict[str, Any],
     case: dict[str, Any],
     sens: pd.DataFrame,
     path: Path,
@@ -673,7 +697,7 @@ def write_routing_report(
     old = pd.DataFrame(cp4["summary_200_trips"]).set_index("lam")
     c4, c6, cf = case["cp4"], case["cp6"], case["fastest"]
     lines = [
-        "# Routing trade-off (CP6: per-vehicle risk)",
+        "# Routing trade-off (per-vehicle risk, recalibrated)",
         "",
         "Edge cost = travel_time (s, free-flow) + λ · k · risk, where risk is the expected "
         "number of crashes for one vehicle driving the edge, per million vehicles "
@@ -697,19 +721,22 @@ def write_routing_report(
         "",
         f"Mean routing time: {1000 * per_route_s:.0f} ms per route.",
         "",
-        "## CP4 vs CP6",
+        "## CP4 vs CP6 vs CP7",
         "",
         "CP4 routed on expected crashes per year at the locations a route passes (no "
-        "exposure). The '% risk reduction' columns are each version's own risk measure, so "
-        "they are not directly comparable; times, detours and road-class shares are.",
+        "exposure); CP6 on per-vehicle risk from EB; CP7 on per-vehicle risk from EB with the "
+        "volume recalibration (reports/calibration.md). CP4's '% risk reduction' is a "
+        "different risk measure, so it is not comparable; times, detours and road-class "
+        "shares are. CP6 numbers are frozen in reports/cp6_baseline.json.",
         "",
-        markdown_table(cp4_vs_cp6(cp4, summary), floats="{:.2f}"),
+        markdown_table(version_table(cp4, cp6, summary), floats="{:.2f}"),
         "",
+        *holds(cp6, summary),
         f"- Residential share at λ = 1: {old.loc[1, 'residential share']:.0%} in CP4, "
-        f"{s.loc[1, 'residential share']:.0%} now (fastest routes: "
+        f"{s.loc[1, 'residential share']:.0%} in CP7 (fastest routes: "
         f"{old.loc[0, 'residential share']:.0%} / {s.loc[0, 'residential share']:.0%}).",
         f"- Motorway share at λ = 1: {old.loc[1, 'motorway share']:.0%} in CP4, "
-        f"{s.loc[1, 'motorway share']:.0%} now (fastest routes: "
+        f"{s.loc[1, 'motorway share']:.0%} in CP7 (fastest routes: "
         f"{old.loc[0, 'motorway share']:.0%} / {s.loc[0, 'motorway share']:.0%}).",
         "",
         "## Case study: Union Station → Yorkdale at λ = 2",
@@ -724,12 +751,18 @@ def write_routing_report(
             for label, r in (
                 ("fastest", cf),
                 ("CP4 safest (count-based)", c4),
-                ("CP6 safest (per-vehicle)", c6),
+                ("CP7 safest (per-vehicle, recalibrated)", c6),
             )
         ],  # fmt: skip
+        *[
+            f"| CP6 safest (as reported in CP6) | {r['km']:.1f} | {r['minutes']:.1f} | "
+            f"{r['expected crashes per million trips']:.1f} | {r['motorway km']:.1f} |"
+            for r in cp6["union_yorkdale"]
+            if r["route"].startswith("CP6")
+        ],
         "",
-        "All three are scored with CP6 per-vehicle risk. The CP4 route ends at the node CP4 "
-        "snapped Yorkdale to (a turning circle on Highland Hill, behind the mall).",
+        "Fastest, CP4 and CP7 rows are scored with CP7 per-vehicle risk. The CP4 route ends "
+        "at the node CP4 snapped Yorkdale to (a turning circle on Highland Hill, behind the mall).",
         "",
         "**The Yorkdale hook.** CP4 snapped the Yorkdale preset (the middle of the mall) to the "
         "nearest graph node: a turning circle at the end of Highland Hill, a residential "

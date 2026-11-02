@@ -1,0 +1,77 @@
+{
+ "source": "CP6, commit 8f73802: per-vehicle risk with uncalibrated EB, turn-aware routing",
+ "k_seconds_per_crash_per_million_trips": 31.1,
+ "summary_200_trips": [
+  {
+   "lam": 0.0,
+   "median extra min": 0.0,
+   "p90 extra min": 0.0,
+   "median % risk reduction": 0.0,
+   "p90 % risk reduction": 0.0,
+   "median detour (km ratio)": 1.0,
+   "p90 detour (km ratio)": 1.0,
+   "motorway share": 0.5,
+   "residential share": 0.03,
+   "routes with a U-turn": 0.0
+  },
+  {
+   "lam": 0.5,
+   "median extra min": 0.58,
+   "p90 extra min": 2.3,
+   "median % risk reduction": 20.99,
+   "p90 % risk reduction": 45.98,
+   "median detour (km ratio)": 1.02,
+   "p90 detour (km ratio)": 1.28,
+   "motorway share": 0.57,
+   "residential share": 0.06,
+   "routes with a U-turn": 0.01
+  },
+  {
+   "lam": 1.0,
+   "median extra min": 1.45,
+   "p90 extra min": 3.62,
+   "median % risk reduction": 26.54,
+   "p90 % risk reduction": 50.17,
+   "median detour (km ratio)": 1.04,
+   "p90 detour (km ratio)": 1.44,
+   "motorway share": 0.58,
+   "residential share": 0.08,
+   "routes with a U-turn": 0.03
+  },
+  {
+   "lam": 2.0,
+   "median extra min": 2.04,
+   "p90 extra min": 5.09,
+   "median % risk reduction": 28.73,
+   "p90 % risk reduction": 52.84,
+   "median detour (km ratio)": 1.07,
+   "p90 detour (km ratio)": 1.52,
+   "motorway share": 0.6,
+   "residential share": 0.08,
+   "routes with a U-turn": 0.03
+  }
+ ],
+ "union_yorkdale": [
+  {
+   "route": "fastest",
+   "km": 12.6,
+   "minutes": 14.9,
+   "expected crashes per million trips": 82.2,
+   "motorway km": 3.2
+  },
+  {
+   "route": "CP4 safest (count-based)",
+   "km": 37.9,
+   "minutes": 26.4,
+   "expected crashes per million trips": 54.1,
+   "motorway km": 35.0
+  },
+  {
+   "route": "CP6 safest (per-vehicle)",
+   "km": 30.1,
+   "minutes": 19.9,
+   "expected crashes per million trips": 28.8,
+   "motorway km": 29.3
+  }
+ ]
+}
