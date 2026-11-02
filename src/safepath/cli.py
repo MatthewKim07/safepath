@@ -20,6 +20,7 @@ from safepath.exposure import run_exposure
 from safepath.features.build import run_features
 from safepath.graph import run_graph
 from safepath.locations import run_locations
+from safepath.models.calibration import run_calibration
 from safepath.models.eb import run_eb
 from safepath.models.spf import run_spf
 from safepath.models.train import run_train
@@ -58,6 +59,10 @@ STEPS: dict[str, tuple[str, Callable[[dict], None]]] = {
     "spf": ("Fit the negative binomial safety performance function", run_spf),
     "eb": ("Empirical Bayes expected crashes per intersection-year", run_eb),
     "evaluate": ("Evaluate models on val 2024 and test 2025", run_evaluate),
+    "calibration": (
+        "Check calibration by volume and recalibrate the routing model",
+        run_calibration,
+    ),
     "score": ("Score 2026 risk and write it onto the routing graph", run_score),
     "route": ("Calibrate k and report the routing trade-off", run_routing),
     "volumes": ("Download Toronto traffic counts, expand to AADT, match to the graph", run_volumes),
@@ -82,6 +87,7 @@ PIPELINE = [
     "spf",
     "eb",
     "evaluate",
+    "calibration",
     "score",
     "exposure",
     "route",

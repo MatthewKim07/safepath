@@ -61,45 +61,45 @@ Expected crashes per million vehicles per km driven on that class, with the inte
 
 | road class | km | intersection risk per km | segment risk per km | total per km | intersections per km |
 |---|---:|---:|---:|---:|---:|
-| primary | 314.822 | 6.128 | 0.139 | 6.267 | 7.388 |
-| living_street | 7.226 | 5.876 | 0.033 | 5.909 | 8.580 |
-| secondary | 1,456.883 | 4.994 | 0.118 | 5.112 | 6.959 |
-| residential | 6,791.868 | 4.168 | 0.466 | 4.634 | 6.006 |
-| tertiary | 1,509.601 | 4.316 | 0.135 | 4.450 | 6.666 |
-| unclassified | 385.665 | 3.712 | 0.617 | 4.329 | 3.067 |
-| secondary_link | 16.039 | 2.757 | 0.033 | 2.789 | 11.035 |
-| primary_link | 10.459 | 2.332 | 0.033 | 2.365 | 8.796 |
-| 400-series | 237.169 | 0.027 | 0.889 | 0.916 | 1.320 |
-| motorway | 91.854 | 0.089 | 0.671 | 0.760 | 1.459 |
-| busway | 10.604 | 0.429 | 0.033 | 0.462 | 2.263 |
-| motorway_link | 227.924 | 0.162 | 0.034 | 0.196 | 2.584 |
+| primary | 314.822 | 6.142 | 0.139 | 6.281 | 7.388 |
+| living_street | 7.226 | 5.781 | 0.033 | 5.814 | 8.580 |
+| secondary | 1,456.883 | 5.001 | 0.118 | 5.119 | 6.959 |
+| residential | 6,791.868 | 4.140 | 0.466 | 4.606 | 6.006 |
+| tertiary | 1,509.601 | 4.371 | 0.135 | 4.506 | 6.666 |
+| unclassified | 385.665 | 3.673 | 0.617 | 4.290 | 3.067 |
+| secondary_link | 16.039 | 2.776 | 0.033 | 2.809 | 11.035 |
+| primary_link | 10.459 | 2.340 | 0.033 | 2.373 | 8.796 |
+| 400-series | 237.169 | 0.028 | 0.889 | 0.918 | 1.320 |
+| motorway | 91.854 | 0.090 | 0.671 | 0.761 | 1.459 |
+| busway | 10.604 | 0.437 | 0.033 | 0.469 | 2.263 |
+| motorway_link | 227.924 | 0.165 | 0.034 | 0.200 | 2.584 |
 
 ## Intersections
 
-- 22,435 intersections; EB 2026 expected crashes/yr total 51,484 (median 0.40). 31 proxy intersections use the SPF alone.
-- Crashes per million entering vehicles: median 0.33, p90 1.49, p99 4.42.
+- 22,435 intersections; EB 2026 expected crashes/yr total 51,615 (median 0.40). 31 proxy intersections use the SPF alone.
+- Crashes per million entering vehicles: median 0.34, p90 1.46, p99 4.28.
 
 Highest per-vehicle risk (entering AADT >= 5,000), after attribution:
 
 | intersection | risk | entering_aadt | risk_per_mev | attributed_share |
 |---|---:|---:|---:|---:|
-| Cherry Street / Polson Street | 31.57 | 6,220.78 | 13.91 | 0.00 |
-| Grandstand Place / Milepost Place / Thorncliffe Park Drive | 52.20 | 11,380.57 | 12.57 | 0.00 |
-| Canadian Road / Warden Avenue | 138.88 | 40,429.81 | 9.41 | 0.00 |
-| East Liberty Street / Lynn Williams Street | 23.76 | 7,672.74 | 8.48 | 0.00 |
-| Ashtonbee Road / Thermos Road | 22.87 | 8,001.58 | 7.83 | 0.00 |
-| Harness Road / Queen's Plate Drive | 17.81 | 6,428.05 | 7.59 | 0.00 |
-| Covington Road / Saranac Boulevard | 22.67 | 8,218.71 | 7.56 | 0.00 |
-| Dufferin Street / Gerry Fitzgerald Drive | 98.66 | 38,134.02 | 7.09 | 0.00 |
-| Allanford Road / Sheppard Avenue East | 60.94 | 23,577.93 | 7.08 | 0.00 |
-| Keele Street / St. Clair Avenue West / Weston Road | 105.78 | 43,351.83 | 6.68 | 0.00 |
-| Eglinton Avenue East / Eglinton Avenue West / Yonge Street | 69.15 | 28,736.37 | 6.59 | 0.00 |
-| Fenmar Drive / Kenhar Drive | 26.41 | 11,746.31 | 6.16 | 0.00 |
-| Ellesmere Road / Markham Road | 129.95 | 59,430.37 | 5.99 | 0.00 |
-| Ellesmere Road / Kennedy Road | 171.34 | 78,552.71 | 5.98 | 0.00 |
-| Kennedy Road / Lawrence Avenue East | 127.07 | 58,547.01 | 5.95 | 0.00 |
-| Danforth Avenue / Victoria Park Avenue | 85.48 | 40,233.35 | 5.82 | 0.00 |
-| Gerrard Street East / Marjory Avenue | 35.99 | 17,061.19 | 5.78 | 0.00 |
-| Lloyd Manor Road / Warrender Avenue | 10.31 | 5,137.79 | 5.50 | 0.00 |
-| Midland Avenue / Silver Star Boulevard / South Shields Avenue | 49.05 | 24,616.48 | 5.46 | 0.00 |
-| Bathurst Street / Dundas Street West | 53.44 | 27,294.73 | 5.36 | 0.00 |
+| Cherry Street / Polson Street | 30.74 | 6,220.78 | 13.54 | 0.00 |
+| Grandstand Place / Milepost Place / Thorncliffe Park Drive | 49.70 | 11,380.57 | 11.96 | 0.00 |
+| Canadian Road / Warden Avenue | 128.72 | 40,429.81 | 8.72 | 0.00 |
+| East Liberty Street / Lynn Williams Street | 23.41 | 7,672.74 | 8.36 | 0.00 |
+| Ashtonbee Road / Thermos Road | 22.57 | 8,001.58 | 7.73 | 0.00 |
+| Harness Road / Queen's Plate Drive | 17.72 | 6,428.05 | 7.55 | 0.00 |
+| Covington Road / Saranac Boulevard | 22.37 | 8,218.71 | 7.46 | 0.00 |
+| Allanford Road / Sheppard Avenue East | 57.92 | 23,577.93 | 6.73 | 0.00 |
+| Dufferin Street / Gerry Fitzgerald Drive | 92.86 | 38,134.02 | 6.67 | 0.00 |
+| Keele Street / St. Clair Avenue West / Weston Road | 99.70 | 43,351.83 | 6.30 | 0.00 |
+| Eglinton Avenue East / Eglinton Avenue West / Yonge Street | 65.64 | 28,736.37 | 6.26 | 0.00 |
+| Fenmar Drive / Kenhar Drive | 25.89 | 11,746.31 | 6.04 | 0.00 |
+| Ellesmere Road / Markham Road | 122.81 | 59,430.37 | 5.66 | 0.00 |
+| Ellesmere Road / Kennedy Road | 161.69 | 78,552.71 | 5.64 | 0.00 |
+| Kennedy Road / Lawrence Avenue East | 120.14 | 58,547.01 | 5.62 | 0.00 |
+| Gerrard Street East / Marjory Avenue | 34.86 | 17,061.19 | 5.60 | 0.00 |
+| Lloyd Manor Road / Warrender Avenue | 10.40 | 5,137.79 | 5.54 | 0.00 |
+| Danforth Avenue / Victoria Park Avenue | 81.21 | 40,233.35 | 5.53 | 0.00 |
+| Alton Towers Circle / Goldhawk Trail | 11.79 | 5,979.95 | 5.40 | 0.00 |
+| Baldwin Street / McCaul Street | 14.05 | 7,238.32 | 5.32 | 0.00 |

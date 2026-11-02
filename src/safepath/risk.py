@@ -3,7 +3,8 @@
 Unit: expected crashes for one vehicle, stored per million vehicles so that a route's sum is
 expected crashes per million trips.
 
-- Intersections: Empirical Bayes expected crashes in 2026 / (entering AADT x 365), charged
+- Intersections: Empirical Bayes expected crashes in 2026, with the CP7 volume
+  recalibration (models/calibration.py), / (entering AADT x 365), charged
   once per consolidated intersection on the edges entering it. Proxy intersections (CP3)
   use the SPF alone, since their own counts belong elsewhere.
 - City segments: mid-block crashes per million vehicle-km (MVKM) by road class x length.
@@ -41,6 +42,12 @@ from safepath.features.roads import approaches
 from safepath.features.volume_features import INTERSECTION_EXPOSURE
 from safepath.graph import EDGE_MAP, INTERSECTIONS, NODE_MAP, PROJ_GRAPH, SEGMENTS
 from safepath.locations import markdown_table
+from safepath.models.calibration import (
+    RECALIBRATED,
+    RECALIBRATION,
+    ROUTING_MODEL,
+    Recalibration,
+)
 from safepath.models.eb import EB_PREDICTIONS, eb_for_year
 from safepath.models.spf import SPF_PREDICTIONS, year_levels
 from safepath.models.volume import AADT_EDGES
@@ -245,16 +252,26 @@ def intersection_risk(
     exposure: pd.DataFrame,
     window: int,
     levels: pd.Series,
+    recalibration: Recalibration | None = None,
 ) -> pd.DataFrame:
-    """EB 2026 on attributed crash history; SPF alone for proxies; per million entering
-    vehicles. Citywide levels come from the unadjusted labels: attribution moves crashes,
-    it does not change how many happened."""
+    """EB 2026 on attributed crash history, times the CP7 volume recalibration when given;
+    SPF alone for proxies; per million entering vehicles. Citywide levels come from the
+    unadjusted labels: attribution moves crashes, it does not change how many happened."""
     base, k = spf["spf_base"], spf["k"]
-    adj = adjusted_labels(labels, attribution)
-    eb = eb_for_year(base, k, adj, levels, DEPLOY_YEAR, window).set_index("intersection_id")
-    raw = eb_for_year(base, k, labels, levels, DEPLOY_YEAR, window).set_index("intersection_id")
+    aadt = exposure["entering_aadt"].reindex(base.index)
+
+    def expected(history: pd.DataFrame) -> pd.DataFrame:
+        e = eb_for_year(base, k, history, levels, DEPLOY_YEAR, window).set_index("intersection_id")
+        e["eb_uncalibrated"] = e["eb"]
+        if recalibration is not None:
+            e["eb"] = recalibration.apply(e.assign(entering_aadt=aadt))
+        return e
+
+    eb = expected(adjusted_labels(labels, attribution))
+    raw = expected(labels)
     excluded = labels.groupby("intersection_id")["exclusion_reason"].first()
     out = pd.DataFrame(index=base.index.rename("intersection_id"))
+    out["eb_uncalibrated"] = eb["eb_uncalibrated"]
     out["eb_unattributed"] = raw["eb"]
     out["exclusion_reason"] = excluded.reindex(out.index)
     out["is_proxy_fallback"] = out["exclusion_reason"].notna()
@@ -462,6 +479,18 @@ def write_report(r: dict[str, Any], path: Path) -> None:
     path.write_text("\n".join(lines) + "\n")
 
 
+def routing_recalibration(cfg: dict[str, Any]) -> Recalibration | None:
+    """The intersection model chosen in calibration.py (only EB-based choices are wired)."""
+    models_dir = Path(cfg["paths"]["models_dir"])
+    choice = json.loads((models_dir / ROUTING_MODEL).read_text())["chosen"]
+    if choice == RECALIBRATED:
+        with open(models_dir / RECALIBRATION, "rb") as f:
+            return pickle.load(f)
+    if choice == "EB (CP6)":
+        return None
+    raise ValueError(f"routing risk for {choice!r} is not implemented in risk.py")
+
+
 def run_score(cfg: dict[str, Any]) -> Path:
     processed = Path(cfg["paths"]["processed_dir"])
     labels = pd.read_parquet(processed / LABELS)
@@ -486,7 +515,9 @@ def run_score(cfg: dict[str, Any]) -> Path:
     )  # fmt: skip
     extra = extra[extra.index.isin(CITY_EXPRESSWAYS)]
 
-    risk = intersection_risk(labels, attribution, spf, exposure, window, levels)
+    risk = intersection_risk(
+        labels, attribution, spf, exposure, window, levels, routing_recalibration(cfg)
+    )
     if risk["risk_per_mev"].isna().any() or (risk["risk_per_mev"] < 0).any():
         raise ValueError("intersection risk per vehicle has NaN or negative values")
     risk.to_parquet(processed / INTERSECTION_RISK, index=False)
