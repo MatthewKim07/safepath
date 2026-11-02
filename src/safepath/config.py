@@ -15,6 +15,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG = REPO_ROOT / "configs" / "default.yaml"
 OTTAWA_CONFIG = REPO_ROOT / "configs" / "ottawa.yaml"
+LONDON_CONFIG = REPO_ROOT / "configs" / "london.yaml"
 
 
 def _merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
@@ -57,5 +58,11 @@ def ottawa_config(cfg: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 def toronto_config(cfg: dict[str, Any]) -> dict[str, Any]:
-    """The Toronto (training-city) config: `cfg` unless it is Ottawa's."""
-    return load_config() if cfg.get("city") == "ottawa" else cfg
+    """The Toronto (training-city) config: `cfg` unless it is another city's."""
+    return load_config() if cfg.get("city") in ("ottawa", "london") else cfg
+
+
+def london_config(cfg: dict[str, Any] | None = None) -> dict[str, Any]:
+    if cfg is not None and cfg.get("city") == "london":
+        return cfg
+    return load_config(LONDON_CONFIG)

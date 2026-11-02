@@ -10,7 +10,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from safepath.config import load_config, ottawa_config, toronto_config
+from safepath.config import load_config, london_config, ottawa_config, toronto_config
 from safepath.data.clean import run_clean
 from safepath.data.download import download_collisions
 from safepath.data.mto import run_mto
@@ -23,6 +23,7 @@ from safepath.exposure import run_exposure
 from safepath.features.build import run_features
 from safepath.graph import run_graph
 from safepath.locations import run_locations
+from safepath.london.risk import run_london_step
 from safepath.models.calibration import run_calibration
 from safepath.models.eb import run_eb
 from safepath.models.spf import run_spf
@@ -106,6 +107,10 @@ STEPS: dict[str, tuple[str, Callable[[dict], None]]] = {
     "ottawa-transfer": (
         "Ottawa: score Toronto-trained crash models (GNNs in a subprocess); reports/ottawa.md",
         lambda cfg: run_ottawa_transfer(ottawa_config(cfg), toronto_config(cfg)),
+    ),
+    "london": (
+        "London ON demo: graph, City volumes, Toronto SPF risk, routing graph, report",
+        lambda cfg: run_london_step(london_config(cfg), toronto_config(cfg)),
     ),
 }
 OTTAWA_PIPELINE = ["ottawa-data", "ottawa-build", "ottawa-volumes", "ottawa-transfer"]

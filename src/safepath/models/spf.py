@@ -52,7 +52,13 @@ def spf_frame(cfg: dict[str, Any]) -> pd.DataFrame:
     labels = pd.read_parquet(processed / LABELS)
     static = pd.read_parquet(processed / STATIC)
     expo = pd.read_parquet(processed / INTERSECTION_EXPOSURE).set_index("intersection_id")
-    df = labels.join(
+    return spf_covariates(labels, static, expo)
+
+
+def spf_covariates(rows: pd.DataFrame, static: pd.DataFrame, expo: pd.DataFrame) -> pd.DataFrame:
+    """SPF covariates for `rows` (anything with intersection_id): also used for a city with
+    no crash records at all (London), where rows are just the intersections."""
+    df = rows.join(
         static[["n_legs", "has_signal", "streetcar_20m", "min_leg_angle_deg", "class_combo"]],
         on="intersection_id",
     ).join(expo, on="intersection_id")
