@@ -1,0 +1,47 @@
+{
+  "label": "Toronto",
+  "center": [
+    43.7,
+    -79.4
+  ],
+  "zoom": 11,
+  "presets": {
+    "Union Station": [
+      43.6453,
+      -79.3806
+    ],
+    "Yorkdale": [
+      43.7255,
+      -79.4522
+    ],
+    "Scarborough Town Centre": [
+      43.7757,
+      -79.2578
+    ],
+    "Pearson area": [
+      43.6867,
+      -79.5941
+    ],
+    "High Park": [
+      43.6465,
+      -79.4637
+    ],
+    "UofT St. George": [
+      43.6629,
+      -79.3957
+    ]
+  },
+  "default_trip": [
+    "Union Station",
+    "Yorkdale"
+  ],
+  "relative": false,
+  "k_seconds_per_crash": 30.809075736536663,
+  "files_mb": {
+    "nodes.parquet": 0.71,
+    "edges.parquet": 3.07,
+    "geometry.parquet": 2.25,
+    "geom_offsets.npy": 0.58,
+    "intersections.parquet": 1.11
+  }
+}

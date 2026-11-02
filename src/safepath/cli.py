@@ -10,6 +10,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
+from safepath.bundle import run_bundle
 from safepath.config import load_config, london_config, ottawa_config, toronto_config
 from safepath.data.clean import run_clean
 from safepath.data.download import download_collisions
@@ -108,6 +109,7 @@ STEPS: dict[str, tuple[str, Callable[[dict], None]]] = {
         "Ottawa: score Toronto-trained crash models (GNNs in a subprocess); reports/ottawa.md",
         lambda cfg: run_ottawa_transfer(ottawa_config(cfg), toronto_config(cfg)),
     ),
+    "bundle": ("Write the slim app bundle (app_bundle/<city>/) for deployment", run_bundle),
     "london": (
         "London ON demo: graph, City volumes, Toronto SPF risk, routing graph, report",
         lambda cfg: run_london_step(london_config(cfg), toronto_config(cfg)),

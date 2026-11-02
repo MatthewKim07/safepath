@@ -225,6 +225,7 @@ CLAUDE.md
 data/raw/
 data/processed/
 *.parquet
+!app_bundle/*/*.parquet
 *.graphml
 cache/
 /models/

@@ -1,0 +1,51 @@
+{
+  "label": "London, ON",
+  "center": [
+    42.985,
+    -81.245
+  ],
+  "zoom": 12,
+  "presets": {
+    "Western University (UCC)": [
+      43.0089,
+      -81.2737
+    ],
+    "Masonville Place": [
+      43.0255,
+      -81.2796
+    ],
+    "White Oaks Mall": [
+      42.9395,
+      -81.2258
+    ],
+    "Covent Garden Market (downtown)": [
+      42.9832,
+      -81.2497
+    ],
+    "Fanshawe College": [
+      43.0128,
+      -81.2003
+    ],
+    "Hyde Park area": [
+      43.008,
+      -81.334
+    ],
+    "London International Airport area": [
+      43.0303,
+      -81.1569
+    ]
+  },
+  "default_trip": [
+    "Western University (UCC)",
+    "White Oaks Mall"
+  ],
+  "relative": true,
+  "k_seconds_per_crash": 23.945245950538077,
+  "files_mb": {
+    "nodes.parquet": 0.19,
+    "edges.parquet": 0.8,
+    "geometry.parquet": 0.53,
+    "geom_offsets.npy": 0.16,
+    "intersections.parquet": 0.25
+  }
+}

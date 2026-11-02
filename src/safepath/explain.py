@@ -170,11 +170,15 @@ def effect_table(rows: pd.DataFrame, shap: pd.DataFrame, imp: pd.Series) -> pd.D
 # --------------------------------------------------------------------------- EB factors
 
 
-def spf_contributions(cfg: dict[str, Any]) -> pd.DataFrame:
+def spf_contributions(
+    cfg: dict[str, Any], df: pd.DataFrame | None = None, models: dict | None = None
+) -> pd.DataFrame:
     """Log-space contribution of each SPF factor per intersection, relative to the citywide
-    average log SPF. Sums exactly to log(SPF_i) - mean log SPF."""
-    models = json.loads((Path(cfg["paths"]["models_dir"]) / SPF_MODEL).read_text())["models"]
-    df = spf_frame(cfg)
+    average log SPF. Sums exactly to log(SPF_i) - mean log SPF. Another city passes its own
+    covariate frame `df` and Toronto's SPF `models` (London)."""
+    if models is None:
+        models = json.loads((Path(cfg["paths"]["models_dir"]) / SPF_MODEL).read_text())["models"]
+    df = spf_frame(cfg) if df is None else df
     df = df[df["year"] == df["year"].max()].set_index("intersection_id")
     parts = []
     for group, m in models.items():
@@ -230,7 +234,11 @@ def intersection_factors(cfg: dict[str, Any]) -> pd.DataFrame:
     history = np.log(np.maximum(risk["eb_uncalibrated"], 1e-6) / np.maximum(risk["spf"], 1e-6))
     c["crash history"] = np.where(risk["is_proxy_fallback"].reindex(c.index), 0.0,
                                   history.reindex(c.index))  # fmt: skip
-    factors = [*FACTOR_TERMS, "intersection type", "crash history"]
+    return top_factors(c, [*FACTOR_TERMS, "intersection type", "crash history"])
+
+
+def top_factors(c: pd.DataFrame, factors: list[str]) -> pd.DataFrame:
+    """The three largest log contributions per intersection, as app labels."""
     rows = []
     for iid, r in c.iterrows():
         top = r[factors].astype(float).abs().sort_values(ascending=False).index[:3]

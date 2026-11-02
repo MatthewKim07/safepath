@@ -1,0 +1,9 @@
+# The deployed app only: it reads app_bundle/ and needs no pipeline dependencies
+# (no OSMnx, GeoPandas, LightGBM, torch). Pinned to the versions it was tested with.
+streamlit==1.66.1
+streamlit-folium==0.27.4
+folium==0.20.0
+numpy==2.5.4
+pandas==3.1.0
+pyarrow==26.0.0
+scipy==1.18.1
