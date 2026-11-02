@@ -10,10 +10,11 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from safepath.config import load_config
+from safepath.config import load_config, ottawa_config
 from safepath.data.clean import run_clean
 from safepath.data.download import download_collisions
 from safepath.data.mto import run_mto
+from safepath.data.ottawa import run_ottawa_data
 from safepath.data.report import run_report
 from safepath.data.volume_report import run_volumes
 from safepath.evaluate import run_evaluate
@@ -87,7 +88,12 @@ STEPS: dict[str, tuple[str, Callable[[dict], None]]] = {
     "exposure": ("Write the exposure sanity report (crash rates per vehicle)", run_exposure),
     "gnn": ("Train and evaluate GNNs on the intersection graph (not in `all`)", run_gnn),
     "app": ("Launch the Streamlit routing app", run_app),
+    "ottawa-data": (
+        "Ottawa: download and clean collisions and intersection counts",
+        lambda cfg: run_ottawa_data(ottawa_config(cfg)),
+    ),
 }
+OTTAWA_PIPELINE = ["ottawa-data"]
 PIPELINE = [
     "download",
     "clean",
@@ -121,6 +127,7 @@ def build_parser() -> argparse.ArgumentParser:
     for name, (help_text, _) in STEPS.items():
         sub.add_parser(name, help=help_text)
     sub.add_parser("all", help="Run the full pipeline: " + " -> ".join(PIPELINE))
+    sub.add_parser("ottawa", help="Run the Ottawa cross-city test: " + " -> ".join(OTTAWA_PIPELINE))
     return parser
 
 
@@ -134,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
         os.environ["SAFEPATH_DEVICE"] = args.device
     if args.config:
         cfg["_config_path"] = args.config
-    steps = PIPELINE if args.step == "all" else [args.step]
+    steps = {"all": PIPELINE, "ottawa": OTTAWA_PIPELINE}.get(args.step, [args.step])
     for step in steps:
         log.info("running step '%s'", step)
         try:

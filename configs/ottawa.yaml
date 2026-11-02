@@ -1,0 +1,76 @@
+# Ottawa cross-city test (CP9). Only what differs from Toronto is listed here.
+extends: default.yaml
+city: ottawa
+
+paths:
+  raw_dir: data/raw/ottawa
+  page_cache_dir: data/raw/ottawa/pages
+  processed_dir: data/processed/ottawa
+  reports_dir: reports/ottawa
+  figures_dir: reports/figures/ottawa
+  models_dir: models/ottawa
+
+clean:
+  # Generous box around the amalgamated City of Ottawa.
+  bbox:
+    min_lon: -76.36
+    max_lon: -75.24
+    min_lat: 44.96
+    max_lat: 45.54
+
+graph:
+  place: null
+  # Official Plan urban boundary (City of Ottawa, by-law 2021-386); the rest of the
+  # amalgamated city is rural and has no counterpart in Toronto.
+  boundary:
+    name: City of Ottawa Official Plan urban boundary
+    url: https://maps.ottawa.ca/arcgis/rest/services/Planning/MapServer/13
+  crs: EPSG:32618
+  downtown: [45.4236, -75.7009]  # Parliament Hill, for the volume model's distance feature
+
+osm:
+  # Ottawa has no on-street tram (the O-Train is grade-separated light rail).
+  allow_empty_layers: [tram]
+
+labels:
+  first_year: 2013
+  last_year: 2024
+  missing_years: [2023]  # not published by the City
+
+splits:
+  train: [2016, 2017, 2018, 2019]
+  val: [2022]
+  test: [2024]
+  # 2013-2015 and 2020-2021 are history only; 2023 is unpublished; 2025 is not yet out.
+
+ottawa:
+  host: https://services.arcgis.com/G6F8XLCl5KtAlZ2G/arcgis/rest/services
+  licence: Open Government Licence - City of Ottawa
+  timeout_seconds: 120
+  max_retries: 6
+  backoff_seconds: 2.0
+  collisions:
+    # one layer per year 2013-2020 (with the intersection / non-intersection field), and one
+    # layer for 2017-2024 without 2023 (newer edit, no intersection field)
+    yearly: "{year}_Tabular_Transportation_Collision_Data"
+    yearly_years: [2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020]
+    combined: Traffic_Collisions_by_Location_2017-2024_(excluding_2023)
+    # source per label year
+    use_combined_from: 2017
+  volumes:
+    services:
+      2016: Transportation_Intersection_Volumes_2016
+      2017: Transportation_Intersection_Volumes_2017
+      2018: Transportation_Intersection_Volumes_2018
+      2019: Transportation_Intersection_Volumes_2019
+      2021: Transportation_Intersection_Volumes_2021
+      2022: Intersection_Volume_2022_w_lat_long
+      2023: Transportation_Intersection_Volume_2023
+      2024: Transportation_Intersection_Volumes_2024
+      2025: Transportation_Intersection_Volume_2025
+    covid_years: [2020, 2021]
+    match_m: 40
+  freeway:
+    # Hwy 416 / 417 are OPP; their crashes are in the City data but not in Toronto's.
+    highways: ["416", "417"]
+    motorway_m: 30
