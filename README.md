@@ -1,19 +1,45 @@
 # SafePath
 
-**Crash-risk-aware routing for Toronto.** SafePath estimates each driver's own crash risk on
-every intersection and road segment (expected crashes per vehicle, from police-reported
-collisions and traffic volumes) and routes with `cost = travel_time + λ · risk`. A single
-slider moves between the fastest route and the safest one, and the app shows exactly what
-the safer route costs in minutes.
+**Crash-risk-aware routing for Toronto.** SafePath estimates the chance that *you* crash at
+every intersection and on every road segment, from police-reported collisions and traffic
+volumes, and routes with `cost = travel_time + λ · risk`. One slider moves between the fastest
+route and the safest one, and the app shows exactly what the safer route costs in minutes.
 
-![SafePath app: fastest (gray) vs safest (green) route from Union Station to Yorkdale at λ = 2, with the top 5% riskiest intersections](reports/figures/app_lambda2.png)
+## Results at a glance
 
-The goal is a rigorous, honest ML pipeline rather than a flashy number: temporal holdouts,
-strong baselines, bootstrap confidence intervals, a unit-tested guarantee against label
-leakage, and a written account of where the model and the data fall short. No LLMs are used
-anywhere in the system.
+- **Exposure-aware risk changes the answer.** Per kilometre, primary roads look 20× riskier
+  than residential streets; per vehicle-kilometre the gap is 1.2×. Routing on crash counts
+  put 21% of safer-route kilometres on residential streets; routing per vehicle puts 8%.
+- **Safer routes are cheap.** Over 200 random trips at λ = 1: median **+1.4 minutes** for
+  **26% lower** expected crash risk; at λ = 2, +2.0 minutes for 29%.
+- **A validated crash model.** Empirical Bayes on a negative binomial Safety Performance
+  Function, recalibrated by traffic volume (per-vehicle calibration error 0.031 on the 2025
+  test year), with leakage tests and spatial holdouts throughout.
+- **Highways handled properly.** The OPP patrols the 400-series, so Toronto Police data holds
+  only ~8% of their crashes. SafePath uses the Ministry of Transportation's own rates, and
+  moves Gardiner/DVP crashes that police place at surface streets back onto the expressway,
+  which lands both in the MTO freeway range.
 
-## How it works
+![Union Station to Yorkdale: count-based (red) vs per-vehicle (green) safest route](reports/figures/before_after_union_yorkdale.png)
+
+*Union Station → Yorkdale at λ = 2. Count-based routing (red) took a 38 km Gardiner–427–401
+loop and ended in a cul-de-sac behind the mall. Per-vehicle routing (green) takes the DVP and
+the 401: 30 km, +5 minutes over the fastest route, 65% lower expected crash risk.*
+
+## Problem and approach
+
+A crash map shows where crashes happen, not where driving is dangerous: busy roads have more
+crashes because they carry more cars. Routing on raw crash counts therefore avoids busy roads
+and pushes drivers onto quiet residential streets and long freeway detours.
+
+SafePath routes on the driver's own expected crashes per trip instead:
+
+| | count-based (first version) | per-vehicle (current) |
+|---|---|---|
+| intersection | predicted crashes per year | Empirical Bayes crashes per year ÷ entering vehicles |
+| road segment | crashes per km | crashes per vehicle-km |
+| 400-series highways | proxy estimate from police data | MTO collision rate per vehicle-km |
+| route total | crashes per year at the places passed | expected crashes per million trips |
 
 ```mermaid
 flowchart LR
@@ -21,40 +47,150 @@ flowchart LR
     C[OpenStreetMap<br/>Toronto drive graph] --> D[Consolidate intersections<br/>22,435 nodes]
     B --> E[Snap crashes to intersections<br/>+ proxy exclusion]
     D --> E
-    E --> F[Intersection-year labels<br/>+ static and history features]
+    E --> F[Intersection-year labels<br/>+ road and history features]
     J[City traffic counts<br/>+ MTO highway data] --> K[AADT model<br/>every intersection + edge]
-    F --> G[LightGBM vs baselines<br/>SPF + Empirical Bayes]
+    F --> G[SPF + Empirical Bayes<br/>LightGBM, baselines]
     K --> G
-    G --> H[Per-vehicle risk<br/>intersections + segments]
+    G --> L[Calibration by volume]
+    L --> H[Per-vehicle risk<br/>intersections + segments]
     K --> H
-    H --> I[λ-weighted routing<br/>Streamlit app]
+    H --> I[Turn-aware λ routing<br/>Streamlit app]
 ```
 
-1. **Collisions.** 841,092 Toronto Police Service records are downloaded from the open-data
-   FeatureServer (paginated, cached, verified against the service's own count), cleaned, and
-   deduplicated. 136,730 records (16.3%) have no location and are dropped.
-2. **Road network.** The OSM drive graph is projected to UTM 17N and its intersections are
-   consolidated (nodes within 20 m merge), so a divided-road junction drawn as four OSM nodes
-   becomes one intersection.
-3. **Snapping.** Each crash point is assigned to an intersection (≤ 30 m), a mid-block
-   segment (≤ 20 m from an edge), or excluded (inside a parking lot or off-network).
-4. **Labels and features.** One row per intersection per year: crash count, severe count, and
-   features from OSM (approach-road classes, legs, skew, speed limits, lanes, signals, stop
-   signs, crossings, streetcar tracks, bus stops, nearby activity, distance to motorways and
-   malls) plus crash history drawn only from earlier years.
-5. **Model.** LightGBM with a Poisson objective, early-stopped on 2024 and tested on 2025,
-   compared against three baselines.
-6. **Traffic volumes.** City of Toronto turning-movement and tube counts are expanded to
-   annual daily traffic, MTO supplies the 400-series, and a LightGBM model with sampled
-   betweenness fills in every uncounted intersection and road (`reports/volumes.md`,
-   `reports/volume_model.md`).
-7. **Risk and routing.** A negative binomial Safety Performance Function on traffic volume
-   and road features, blended with each intersection's own crash history by Empirical Bayes,
-   gives expected 2026 crashes; divided by the vehicles entering, that is the risk for one
-   driver. Road segments carry a crash rate per vehicle-km (MTO's rates on the 400-series).
-   A directed edge carries the risk of the intersection it enters (charged once per
-   intersection) plus its segment risk. Turn-aware Dijkstra on `travel_time + λ · k · risk`
-   gives the route for any λ.
+## Data
+
+| source | what | notes |
+|---|---|---|
+| Toronto Police Service, *Traffic Collisions* | 841,092 police-reported collisions, 2014-2026 | 16.3% have no location; TPS places crashes at intersections |
+| City of Toronto, *Traffic Volumes* | 30,961 turning-movement and 45,043 tube counts, 1984-2026 | expanded to annual daily traffic with factors from the City's own 24-hour counts |
+| Ontario MTO, Technical Publications | 400-series volumes (1988-2024) and collision rates (1988-2021) | the province's reportable-collision rates per vehicle-km |
+| OpenStreetMap | drive graph, signals, crossings, streetcar tracks, POIs | current snapshot |
+
+- **Intersections are the unit.** 704k located crashes sit on only 18,651 distinct points and
+  96.3% are within 30 m of a consolidated intersection, so the crash model works per
+  intersection and segments get class-level rates.
+- **The OPP highway gap.** Toronto Police records about 8% of the collisions MTO counts on the
+  401, so highway risk comes from MTO.
+- **Proxy locations.** Mall parking-lot crashes and expressway crashes geocoded to nearby
+  intersections are flagged by explicit rules computed on training years only and kept out
+  of training ([`reports/labels.md`](reports/labels.md)).
+
+## Models
+
+### Traffic volume for every intersection and road
+
+LightGBM on log AADT with road attributes and sampled betweenness on the travel-time graph,
+scored on 2 km spatial blocks it never saw:
+
+| unit | class-median baseline R² | model R² | median error, baseline → model |
+|---|---:|---:|---:|
+| intersections (entering vehicles) | 0.72 | **0.85** | 33% → 21% |
+| segments (two-way vehicles) | 0.78 | **0.85** | 43% → 34% |
+
+Counted locations blend their latest count with the model, weighted by how stale the count
+is (estimated from 22,000 pairs of repeat counts). Details:
+[`reports/volume_model.md`](reports/volume_model.md).
+
+### Crashes per intersection (test year 2025, 22,404 intersections)
+
+| model | Spearman [95% CI] | recall@5% [95% CI] | Poisson dev. | predicted / observed |
+|---|---|---|---:|---:|
+| persistence (own average) | 0.741 [0.734, 0.748] | 0.544 [0.529, 0.558] | 1.193 | 1.06 |
+| LightGBM (road + history) | 0.740 [0.734, 0.747] | 0.554 [0.540, 0.569] | 1.027 | 1.08 |
+| LightGBM + traffic volume | **0.744** [0.737, 0.750] | 0.554 [0.540, 0.569] | **1.011** | 1.08 |
+| Safety Performance Function | 0.595 [0.585, 0.604] | 0.477 [0.459, 0.496] | 2.679 | 1.03 |
+| **Empirical Bayes** (routing) | 0.733 [0.726, 0.739] | 0.552 [0.538, 0.566] | 1.058 | **1.03** |
+| LightGBM, road features only, unseen 2 km blocks | 0.628 [0.619, 0.636] | 0.478 [0.459, 0.495] | 2.531 | 1.00 |
+
+Recall@5% is the share of 2025 crashes at the 5% of intersections ranked riskiest; CIs from
+1,000 bootstrap resamples of intersections. The road-features-only model, scored on spatial
+blocks it never saw, beats a road-class lookup (Spearman 0.396) by a wide margin; it is the
+relevant number for intersections with no crash history and for other cities (Phase 3).
+
+- The **Safety Performance Function** is a negative binomial on major- and minor-road volume,
+  signal, legs, leg angle, streetcar tracks and road classes, fitted separately for
+  signalised 4-leg, signalised 3-leg and unsignalised intersections. Every volume elasticity
+  falls in the literature's 0.3-0.9 range ([`reports/spf.md`](reports/spf.md)).
+- **Empirical Bayes** blends it with each intersection's previous five years. LightGBM +
+  volume ranks slightly better (paired Spearman difference 0.011); EB is better calibrated
+  in total and keeps an interpretable model behind every number, which the app uses to
+  explain each intersection ([`reports/model_comparison.md`](reports/model_comparison.md)).
+
+### Calibration by traffic volume
+
+Routing divides expected crashes by traffic, so calibration has to hold *per vehicle* across
+volumes. A Poisson correction on volume, predicted level and crash history (fitted on
+training years, chosen on 2024, confirmed on 2025) moves the quietest volume decile from 1.12
+to 1.08 predicted/observed on test and the lowest predicted-risk decile from 5.0× to 3.4×
+overpredicted. Observed crashes per million entering vehicles are nearly flat across volume
+(0.5-0.8): quiet intersections are not safer per vehicle
+([`reports/calibration.md`](reports/calibration.md)).
+
+![Calibration by volume and predicted-risk decile](reports/figures/calibration_by_volume.png)
+
+## Validation highlights
+
+- **No leakage.** History features and EB use only years before the label year; tests
+  perturb future years and check that nothing changes.
+- **Temporal and spatial holdouts.** Train 2016-2019 + 2022-2023, validate 2024, test 2025;
+  the volume model and the road-only crash model are scored on unseen 2 km blocks.
+- **Honest baselines.** Persistence is hard to beat on ranking, and the tables say so.
+- **Independent check on the attribution.** After moving surface-street crashes back onto
+  the expressways, the Gardiner (1.03) and the DVP (0.61 collisions per million vehicle-km)
+  land inside MTO's 0.5-1.1 freeway range, which the method was not tuned to hit.
+
+## Routing results (200 random trips, 3-25 km)
+
+| λ | version | median extra min | median detour | motorway share | residential share | risk reduction |
+|---:|---|---:|---:|---:|---:|---:|
+| 1 | count-based (first version) | 4.9 | 1.20× | 59% | 21% | n/a* |
+| 1 | **per-vehicle, calibrated** | **1.4** | **1.04×** | 58% | **8%** | **26%** |
+| 2 | count-based (first version) | 6.4 | 1.26× | 58% | 23% | n/a* |
+| 2 | **per-vehicle, calibrated** | **2.0** | **1.07×** | 61% | **8%** | **29%** |
+
+\*The count-based version measured crashes at the places passed, not the driver's risk.
+Fastest routes: 50% motorway, 3% residential. Per kilometre driven, the 400-series are about
+7× safer than primary arterials (0.9 vs 6.3 expected crashes per million vehicle-km), so safer
+routes still lean on freeways.
+
+**Is that lean an artefact of mixing MTO and police data?** Freeway rates halved or doubled,
+or Gardiner/DVP/Allen volumes moved ±30%:
+
+| variant (λ = 1) | motorway share | median extra min | risk reduction |
+|---|---:|---:|---:|
+| baseline | 58% | 1.4 | 26% |
+| freeway rates ×0.5 | 62% | 1.4 | 30% |
+| freeway rates ×2 | 54% | 1.6 | 23% |
+| Gardiner/DVP/Allen volume +30% | 59% | 1.4 | 27% |
+| Gardiner/DVP/Allen volume −30% | 57% | 1.4 | 25% |
+
+The direction holds in every variant; the size of the freeway lean depends on the assumption.
+Routing is turn-aware, with a U-turn penalty, and snaps destinations like a navigation app.
+Details: [`reports/routing.md`](reports/routing.md).
+
+## Explainability
+
+![SHAP summary for LightGBM + traffic volume](reports/figures/shap_beeswarm.png)
+
+TreeSHAP on LightGBM + traffic volume: crash history carries half the signal and traffic
+volume a fifth; nearness to streetcar tracks, nearby activity and more legs push risk up as
+expected. Three effects look backwards and trace to data quirks: very sharp leg angles and
+100 km/h approaches are ramp and freeway merges with few recorded crashes, and single-road
+clusters have no minor road at all.
+
+In the app every intersection lists its top three factors from the routing model. For
+example, **Ellesmere Rd / Kennedy Rd**: signalised 4+ leg intersection (×18.7 the citywide
+average), about three times more crashes than its design and volume predict (×3.2), and high
+traffic volume (×2.9). Details: [`reports/shap.md`](reports/shap.md).
+
+![SafePath app](reports/figures/app_lambda2.png)
+
+## Experiment tracking
+
+Volume-model CV, the LightGBM models, SPF/EB, the model comparison, calibration and the
+routing evaluation are logged to Weights & Biases with config, metrics, plots and the git
+commit: **[wandb: safepath](https://forge.coreweave.com/wandb/kimmer-university-of-waterloo/safepath)**. Tracking is optional: it turns on when `WANDB_API_KEY` is set
+(environment or a local `.env`), and `--no-wandb` turns it off.
 
 ## Quickstart
 
@@ -62,147 +198,45 @@ Requires Python 3.11+.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev]"            # add ",tracking" for Weights & Biases
 
-python -m safepath all     # download, build the graph, train, evaluate, score (10-15 min, mostly OSM downloads)
-python -m safepath app     # open the Streamlit app
+python -m safepath all             # download, build, model, score, route (~15 min, mostly downloads)
+python -m safepath app             # open the Streamlit app
 ```
 
-Individual steps can be run on their own: `download`, `clean`, `report-data`, `graph`,
-`locations`, `snap`, `report-snap`, `features`, `volumes`, `mto`, `volume-model`, `train`,
-`spf`, `eb`, `evaluate`, `score`, `exposure`, `route`, `app`.
-Network fetches retry with backoff and then fail with a non-zero exit; `all` stops at the
-first failing step. Configuration lives in `configs/default.yaml`; `pytest` runs the test
-suite.
-
-The app accepts query parameters for shareable views, e.g.
-`?origin=Union+Station&destination=Yorkdale&lam=2`.
-
-## Data and design decisions
-
-**Intersections are the unit of analysis.** TPS places collisions on a small set of points:
-704,362 located crashes sit on only 18,651 distinct coordinates. Against the consolidated OSM
-graph, 96.3% of crashes fall within 30 m of an intersection (median 2 m), and only 3.5% sit
-mid-block, a large share of them beside expressways. Modelling segments would mean training
-on approximate locations, so the model works at intersection level and segments get simple
-class-level rates. Details: [`reports/location_analysis.md`](reports/location_analysis.md).
-
-**Consolidation tolerance.** OSMnx tolerances of 10, 15 and 20 m were compared. 10 m (nodes
-within 20 m merge) keeps 91.6% of crashes within 10 m of their intersection; larger
-tolerances pull cluster centres away from where TPS places crashes and start merging
-genuinely separate intersections.
-
-**Proxy exclusions.** Some intersections inherit crashes that happened elsewhere, and both
-patterns were flagged with explicit rules computed from training years only:
-
-- *Retail proxies (23):* parking-lot crashes geocoded to the nearest public intersection.
-  These have ≥ 150 train crashes, ≤ 8% severe, ≥ 25% hit-and-run, and lie within 150 m of a
-  mall or large retail area. Examples: Highland Hill by Yorkdale, Borough / Progress at
-  Scarborough Town Centre, Fairview, Sherway.
-- *Expressway proxies (8):* expressway crashes placed at a nearby surface intersection.
-  These lie within 200 m of a motorway and have ≥ 20× the median crashes for their road-class
-  combination. Examples: residential corners beside the DVP with 1,000+ crashes.
-
-Flagged intersections are excluded from training and headline evaluation, and at
-scoring time they get the SPF estimate instead of their inflated counts. The full
-list with reasons is in
-[`reports/excluded_intersections.csv`](reports/excluded_intersections.csv).
-
-**Highways.** The 401, 400, 404, 409, 427 and QEW are patrolled by the OPP, so Toronto Police
-data barely contains their crashes; they use the Ministry of Transportation's own collision
-rates per million vehicle-km (0.5-1.0 in Toronto, [`reports/mto.md`](reports/mto.md)). Toronto
-Police places many Gardiner and DVP crashes at surface intersections beside or under them;
-crashes there above the SPF expectation are moved back to the expressway, which brings both
-into the MTO range. Other road classes get rates per vehicle-km from mid-block crashes.
-Details: [`reports/risk.md`](reports/risk.md).
-
-**Temporal splits.** Train label years 2016–2019 and 2022–2023, validation 2024, test 2025.
-2020–2021 are used only as history (with a COVID-window indicator, and history features
-also expressed as a share of the citywide total to absorb the level shift). 2026 is a
-partial year and is never a label.
-
-## Results
-
-### Risk model (test year 2025, 22,404 intersections)
-
-| model | Spearman [95% CI] | PR-AUC | ROC-AUC | recall@5% [95% CI] | Poisson dev. |
-|---|---|---:|---:|---|---:|
-| Prior 3-year mean | 0.735 [0.727, 0.743] | 0.839 | 0.872 | 0.553 [0.538, 0.567] | 1.125 |
-| Persistence (train-period mean per intersection) | 0.741 [0.734, 0.748] | 0.858 | 0.889 | 0.544 [0.528, 0.558] | 1.193 |
-| Road-class mean (no history) | 0.396 [0.384, 0.408] | 0.555 | 0.669 | 0.232 [0.219, 0.247] | 5.315 |
-| **LightGBM (static + history)** | 0.740 [0.734, 0.747] | **0.879** | **0.898** | 0.554 [0.539, 0.568] | **1.027** |
-| LightGBM static only, unseen 2 km blocks | 0.628 [0.619, 0.636] | 0.794 | 0.829 | 0.478 [0.459, 0.495] | 2.531 |
-
-Recall@5% is the share of next-year crashes that occur at the 5% of intersections the model
-ranks highest. CIs come from 1,000 bootstrap resamples of intersections.
-
-What this says, plainly:
-
-- **On ranking, LightGBM ties a strong persistence baseline.** The paired Spearman
-  difference is −0.000 [−0.004, +0.003]. It does capture slightly more crashes in its top 5%
-  (+1.0 point, CI [+0.6, +1.5]), and it is better calibrated (lower Poisson deviance, higher
-  PR-AUC) because it predicts small non-zero risk where persistence predicts exactly zero.
-  Recent crash history carries over 90% of the model's gain.
-- **Road features alone transfer.** Scored on spatial blocks it never saw, the static-only
-  model reaches Spearman 0.628, against 0.396 for a road-class lookup. That is the relevant
-  number for intersections with no crash record and for other cities. When the same model is
-  scored on intersections it trained on, it reaches 0.728, because continuous features act as
-  an intersection fingerprint; that number overstates transfer and is not used.
-- Full tables, the severe-crash model, and validation-year results:
-  [`reports/metrics.md`](reports/metrics.md).
-
-![Calibration by prediction decile](reports/figures/calibration.png)
-
-### Routing trade-off (200 random trips, 3–25 km)
-
-`k` = 31.1 seconds per (expected crash per million trips), chosen so that at λ = 1 the median
-route's risk cost equals its median travel time.
-
-| λ | median extra min | p90 extra min | median risk reduction | p90 risk reduction |
-|---:|---:|---:|---:|---:|
-| 0.5 | 0.6 | 2.3 | 21% | 46% |
-| 1 | 1.5 | 3.6 | 27% | 50% |
-| 2 | 2.0 | 5.1 | 29% | 53% |
-
-"Risk" is the expected number of crashes for one driver making the trip. The numbers above
-are for per-vehicle risk (Phase 2); the count-based Phase 1 version claimed larger
-reductions but measured something else (crash-prone places passed), see
-[`reports/routing.md`](reports/routing.md).
-
-![Pareto curve, UofT St. George to the Pearson area](reports/figures/pareto_uoft_st_george_pearson_area.png)
-
-More sweeps: [`reports/routing.md`](reports/routing.md).
+Steps also run on their own: `download`, `clean`, `report-data`, `graph`, `locations`,
+`snap`, `report-snap`, `features`, `volumes`, `mto`, `volume-model`, `train`, `spf`, `eb`,
+`evaluate`, `calibration`, `score`, `explain`, `exposure`, `route`, `app`. Network fetches
+retry and then fail loudly; `all` stops at the first failing step. Configuration lives in
+`configs/default.yaml`; `pytest` runs the test suite. The app takes shareable query
+parameters, e.g. `?origin=Union+Station&destination=Yorkdale&lam=2`.
 
 ## Limitations
 
-- **Modelled exposure.** Most roads have no traffic count; their volumes come from a model
-  with a typical error of 20-45%, and the city expressways' volumes are a lane-based estimate.
-- **Freeways are safer per vehicle-km, and routes use them.** With MTO's rates the 400-series
-  are several times safer per km driven than arterials, so safer routes still lean on
-  freeways (Union Station to Yorkdale at λ = 2 goes by the DVP and the 401: 30 km instead of
-  13, +5 minutes). This rests on treating MTO and Toronto Police crash records as
-  comparable; halving or doubling the freeway rates does not change the direction.
-- **Own risk, not everyone's.** Per-vehicle routing can still send traffic through local
-  streets when they are safer per vehicle, moving risk onto people who live and walk there.
-- **Police-reported data with non-random gaps.** 16.3% of records have no location, and
-  missing locations are more common for property-damage-only collisions (16.8%) than for
-  fatal ones (4.3%).
-- **Intersection-snapped locations.** TPS offsets crashes to intersections, so mid-block risk
-  is only coarsely represented.
-- **Current OSM snapshot.** Road features describe today's network, not the network in each
-  label year.
-- **Heuristic proxy rules.** The retail and expressway rules are documented and conservative,
-  but they are heuristics; near-misses are listed in [`reports/labels.md`](reports/labels.md).
+- **Police-reported data with non-random gaps:** 16.3% of collisions have no location, more
+  often property-damage-only ones (16.8%) than fatal ones (4.3%).
+- **Intersection-snapped locations:** TPS places crashes at intersections, so mid-block risk
+  is coarse.
+- **Current OSM snapshot:** road features describe today's network, not each past year's.
+- **MTO/TPS comparability:** highway rates (MTO) and city rates (police) are treated as
+  comparable; the sensitivity analysis bounds the effect but does not remove the assumption.
+- **Modelled volumes:** most local streets have no count, so their volumes come from the
+  model (typical error 20-45%); the city expressways use a lane-based estimate.
+- **Minor > major elasticity:** in every SPF group the minor-road volume effect exceeds the
+  major-road one, which is unusual and probably reflects noise in modelled volumes.
+- **Attribution may overreach:** a few large reassignments to the Gardiner (Park Lawn,
+  British Columbia Rd) may include genuine surface-street crashes.
+- **Neighbourhood externality:** routing minimises the driver's own risk and can still send
+  traffic through local streets, moving risk onto people who live and walk there.
+- **Changing jurisdiction:** the province has announced it will take over the Gardiner and
+  DVP; if their crashes move to OPP records, the attribution will need MTO data instead.
+- **Free-flow travel times:** congestion would make long freeway detours less attractive.
 
 ## Roadmap
 
-- **Phase 2: exposure and calibration.** Done: Toronto traffic counts and MTO data for
-  exposure, a Safety Performance Function blended with each intersection's history by
-  Empirical Bayes, per-vehicle routing. Next: calibration checks, SHAP explanations,
-  experiment tracking with Weights & Biases, and a rewrite of these Results.
-- **Phase 3: generalisation.** A graph neural network on the road graph against LightGBM; a
-  cross-city test on Ottawa collision data; a London, Ontario demo using the static-only / SPF
-  model.
+- **Phase 3: generalisation.** A graph neural network on the road graph against LightGBM and
+  the SPF; a cross-city test on Ottawa collision data; a London, Ontario demo using the SPF
+  without local crash history.
 - **Phase 4: product.** A deployed demo, a model card, and time- and weather-aware risk.
 
 ## Repository layout
@@ -210,23 +244,24 @@ More sweeps: [`reports/routing.md`](reports/routing.md).
 ```
 configs/default.yaml        pipeline configuration (paths, thresholds, splits, proxy rules)
 src/safepath/data/          collisions, City traffic counts (AADT), MTO highway data
+src/safepath/features/      labels, proxy rules, road, history and volume features
+src/safepath/models/        baselines, LightGBM, volume model, SPF, EB, calibration
 src/safepath/graph.py       OSM graph, consolidated intersections, segment view
 src/safepath/snapping.py    crash-to-intersection / segment assignment
-src/safepath/features/      labels, proxy rules, static and history features
-src/safepath/models/        baselines, LightGBM, volume model, SPF, Empirical Bayes
-src/safepath/evaluate.py    metrics, bootstrap CIs, figures
 src/safepath/risk.py        per-vehicle risk onto the routing graph
-src/safepath/routing.py     λ-weighted routing, k calibration, sensitivity, Pareto sweeps
 src/safepath/movements.py   turn-aware routing graph (U-turn penalty)
+src/safepath/routing.py     λ routing, k calibration, evaluation, sensitivity
+src/safepath/explain.py     SHAP and per-intersection risk factors
+src/safepath/tracking.py    optional Weights & Biases logging
 src/safepath/app/           Streamlit app
 reports/                    generated reports and figures
-tests/                      unit tests (leakage, routing, snapping, metrics, ...)
+tests/                      unit tests (leakage, calibration, routing, snapping, ...)
 ```
 
 ## Data attribution
 
 - Collision data: Toronto Police Service, Public Safety Data Portal, *Traffic Collisions*,
-  used under the [Open Government Licence – Toronto](https://open.toronto.ca/open-data-license/).
+  [Open Government Licence – Toronto](https://open.toronto.ca/open-data-license/).
 - Traffic counts: City of Toronto, *Traffic Volumes* (turning movement and speed / volume /
   classification counts), Open Government Licence – Toronto.
 - Provincial highway volumes and collision rates: Ontario Ministry of Transportation,
