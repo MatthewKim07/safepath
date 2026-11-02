@@ -258,7 +258,7 @@ example, **Ellesmere Rd / Kennedy Rd**: signalised 4+ leg intersection (×18.7 t
 average), about three times more crashes than its design and volume predict (×3.2), and high
 traffic volume (×2.9). Details: [`reports/shap.md`](reports/shap.md).
 
-![SafePath app](reports/figures/app_lambda2.png)
+![SafePath app](reports/figures/app_toronto_lambda2.png)
 
 ## Experiment tracking
 
