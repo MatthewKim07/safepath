@@ -17,7 +17,6 @@ import json
 import logging
 import pickle
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -27,16 +26,22 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 from pyproj import Transformer
-from scipy.sparse import csr_matrix
-from scipy.sparse.csgraph import dijkstra
-from scipy.spatial import cKDTree
 
 from safepath import tracking
 from safepath.data.report import BAR, GRID, SURFACE, TEXT, TEXT_MUTED
 from safepath.graph import NODE_MAP, SEGMENTS
-from safepath.locations import MOTORWAY_CLASSES, markdown_table
-from safepath.movements import U_TURN_PENALTY_S, bearing, build_movements
+from safepath.locations import markdown_table
+from safepath.movements import U_TURN_PENALTY_S, bearing
 from safepath.risk import EDGE_RISK, ROUTING_GRAPH
+from safepath.router import (  # noqa: F401  (re-exported for the pipeline and tests)
+    NoRoute,
+    Route,
+    RouterData,
+    fastest_route,
+    route_stats,
+    safest_route,
+)
+from safepath.router import Router as ArrayRouter
 
 log = logging.getLogger(__name__)
 
@@ -59,221 +64,67 @@ EXAMPLE_PAIRS = [
 SWEEP_LAMBDAS = [0, 0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 5, 7.5, 10]
 
 
-@dataclass
-class Route:
-    nodes: list[int]
-    edges: np.ndarray  # indices into Router edge arrays
-    minutes: float
-    risk: float
-    km: float
-    motorway_km: float
-    residential_km: float
-    uturns: int = 0
-
-
-# A click within this distance of a street is an address on that street; farther away it is
-# inside a large parcel (mall, campus, park) and snaps to the nearest arterial access.
-ADDRESS_M = 100
-ARTERIAL_SLACK_M = 150
-ACCESS_CLASSES = {
-    "primary", "primary_link", "secondary", "secondary_link", "tertiary", "tertiary_link",
-    "trunk", "trunk_link",
-}  # fmt: skip
-
-
 def _first(value: Any) -> Any:
     return value[0] if isinstance(value, list) else value
 
 
-class Router:
-    """Turn-aware shortest paths over the directed routing graph for any lambda.
+def router_data(G: nx.MultiDiGraph, node_junction: dict | None = None) -> RouterData:
+    """Flatten the networkx routing graph into RouterData (edge order = G.edges order)."""
+    nodes = np.array(list(G.nodes))
+    index = {n: i for i, n in enumerate(nodes)}
+    rows = [(a, b, key, d) for a, b, key, d in G.edges(keys=True, data=True)]
+    xy = np.array([(G.nodes[n]["x"], G.nodes[n]["y"]) for n in nodes], dtype=float)
+    to_wgs = Transformer.from_crs(G.graph["crs"], "EPSG:4326", always_xy=True)
+    lon, lat = to_wgs.transform(xy[:, 0], xy[:, 1])
+    node_junction = node_junction or {}
+    n_cl = max(node_junction.values(), default=-1) + 1
+    junction = np.array([node_junction.get(n, n_cl + i) for i, n in enumerate(nodes)],
+                        dtype=np.int64)  # fmt: skip
+    start = np.empty(len(rows))
+    end = np.empty(len(rows))
+    gx: list[np.ndarray] = []
+    gy: list[np.ndarray] = []
+    for i, (a, b, _, d) in enumerate(rows):
+        geom = d.get("geometry")
+        if geom is not None and len(geom.coords) >= 2:
+            c = np.asarray(geom.coords)[:, :2]
+        else:
+            c = np.vstack([xy[index[a]], xy[index[b]]])
+        start[i] = bearing(c[1, 0] - c[0, 0], c[1, 1] - c[0, 1])
+        end[i] = bearing(c[-1, 0] - c[-2, 0], c[-1, 1] - c[-2, 1])
+        gx.append(c[:, 0])
+        gy.append(c[:, 1])
+    offsets = np.concatenate([[0], np.cumsum([len(g) for g in gx])]).astype(np.int64)
+    glon, glat = to_wgs.transform(np.concatenate(gx), np.concatenate(gy))
+    scc = max(nx.strongly_connected_components(G), key=len)
+    return RouterData(
+        nodes=nodes.astype(np.int64),
+        lat=np.asarray(lat), lon=np.asarray(lon),
+        street_count=np.array([G.nodes[n].get("street_count", 2) for n in nodes],
+                              dtype=np.int16),
+        in_scc=np.isin(nodes, list(scc)),
+        junction=junction,
+        u=np.array([index[r[0]] for r in rows], dtype=np.int32),
+        v=np.array([index[r[1]] for r in rows], dtype=np.int32),
+        key=np.array([r[2] for r in rows], dtype=np.int16),
+        travel_time=np.array([float(r[3]["travel_time"]) for r in rows]),
+        risk=np.array([float(r[3].get("risk", 0.0)) for r in rows]),
+        length=np.array([float(r[3]["length"]) for r in rows]),
+        highway=np.array([str(_first(r[3].get("highway"))) for r in rows]),
+        name=np.array([str(_first(r[3].get("name")) or "") for r in rows]),
+        head_start=start.astype(np.float32), head_end=end.astype(np.float32),
+        geom_offsets=offsets,
+        geom_lat=np.asarray(glat, dtype=np.float32), geom_lon=np.asarray(glon, dtype=np.float32),
+    )  # fmt: skip
 
-    States are directed edges and transitions are movements through junctions
-    (`movements.py`), so U-turns through divided-road intersections can be penalised.
-    `node_junction` maps OSM node -> consolidated intersection id; nodes without one are
-    junctions on their own.
-    """
+
+class Router(ArrayRouter):
+    """The pipeline's router: built from the networkx routing graph, which it keeps as `G`
+    for evaluation and plots. The app uses `safepath.router.Router` on bundled arrays."""
 
     def __init__(self, G: nx.MultiDiGraph, k: float = 1.0, node_junction: dict | None = None):
+        super().__init__(router_data(G, node_junction), k)
         self.G = G
-        self.k = k
-        self.nodes = np.array(list(G.nodes))
-        self.index = {n: i for i, n in enumerate(self.nodes)}
-        rows = [(u, v, key, d) for u, v, key, d in G.edges(keys=True, data=True)]
-        self.u = np.array([self.index[r[0]] for r in rows])
-        self.v = np.array([self.index[r[1]] for r in rows])
-        self.key = np.array([r[2] for r in rows])
-        self.travel_time = np.array([float(r[3]["travel_time"]) for r in rows])
-        self.risk = np.array([float(r[3].get("risk", 0.0)) for r in rows])
-        self.length = np.array([float(r[3]["length"]) for r in rows])
-        hw = [_first(r[3].get("highway")) for r in rows]
-        self.is_motorway = np.isin(hw, list(MOTORWAY_CLASSES))
-        self.is_residential = np.isin(hw, ["residential", "living_street"])
-        xy = np.array([(G.nodes[n]["x"], G.nodes[n]["y"]) for n in self.nodes])
-        self.xy = xy
-        self.to_xy = Transformer.from_crs("EPSG:4326", G.graph["crs"], always_xy=True)
-        node_junction = node_junction or {}
-        n_cl = max(node_junction.values(), default=-1) + 1
-        self.junction = np.array(
-            [node_junction.get(n, n_cl + i) for i, n in enumerate(self.nodes)], dtype=np.int64
-        )
-        start, end = self._headings(rows)
-        names = np.array([str(_first(r[3].get("name")) or "") for r in rows])
-        self.moves = build_movements(
-            self.u, self.v, self.travel_time, self.risk, self.junction, start, end, names
-        )
-        self._snap_setup(rows, hw)
-        self._cache: dict[float, csr_matrix] = {}
-
-    def _headings(self, rows: list) -> tuple[np.ndarray, np.ndarray]:
-        """Heading of each edge as it leaves its start node and as it reaches its end node,
-        from its geometry when it has one."""
-        start = np.empty(len(rows))
-        end = np.empty(len(rows))
-        for i, (a, b, _, d) in enumerate(rows):
-            geom = d.get("geometry")
-            if geom is not None and len(geom.coords) >= 2:
-                c = np.asarray(geom.coords)
-                p0, p1, q0, q1 = c[0], c[1], c[-2], c[-1]
-            else:
-                p0 = q0 = self.xy[self.index[a]]
-                p1 = q1 = self.xy[self.index[b]]
-            start[i] = bearing(p1[0] - p0[0], p1[1] - p0[1])
-            end[i] = bearing(q1[0] - q0[0], q1[1] - q0[1])
-        return start, end
-
-    def _snap_setup(self, rows: list, hw: list) -> None:
-        """Snap candidates: no dead ends, in the largest strongly connected component; plus
-        the subset that touches an arterial or collector road."""
-        scc = max(nx.strongly_connected_components(self.G), key=len)
-        degree = np.array([self.G.nodes[n].get("street_count", 2) for n in self.nodes])
-        ok = (degree >= 2) & np.isin(self.nodes, list(scc))
-        access = np.zeros(len(self.nodes), bool)
-        is_access = np.isin(hw, list(ACCESS_CLASSES))
-        access[self.u[is_access]] = True
-        access[self.v[is_access]] = True
-        self.snap_nodes = np.flatnonzero(ok)
-        self.snap_tree = cKDTree(self.xy[self.snap_nodes])
-        self.access_nodes = np.flatnonzero(ok & access)
-        self.access_tree = cKDTree(self.xy[self.access_nodes])
-
-    def cost(self, lam: float) -> np.ndarray:
-        return self.travel_time + lam * self.k * self.risk
-
-    def _matrix(self, lam: float) -> csr_matrix:
-        """Movement-to-movement costs (state = directed edge), with two spare rows/columns
-        for a query's virtual origin and destination."""
-        if lam not in self._cache:
-            m = self.moves
-            c = self.cost(lam)
-            to_edge = m.external[m.move_to]
-            w = (
-                m.int_tt
-                + lam * self.k * m.int_risk
-                + c[to_edge]
-                + U_TURN_PENALTY_S * m.uturn
-                + 1e-9
-            )
-            n = len(m.external) + 2
-            self._cache = {lam: csr_matrix((w, (m.move_from, m.move_to)), shape=(n, n))}
-        return self._cache[lam]
-
-    def nearest_node(self, lat: float, lon: float) -> int:
-        """Snap a point like a navigation app: to the nearest street if it is within
-        ADDRESS_M, otherwise to the nearest arterial or collector access if it is no more
-        than ARTERIAL_SLACK_M farther than the nearest street. Never to a dead end."""
-        x, y = self.to_xy.transform(lon, lat)
-        d_any, i_any = self.snap_tree.query([x, y])
-        if d_any > ADDRESS_M and len(self.access_nodes):
-            d_acc, i_acc = self.access_tree.query([x, y])
-            if d_acc <= d_any + ARTERIAL_SLACK_M:
-                return int(self.nodes[self.access_nodes[i_acc]])
-        return int(self.nodes[self.snap_nodes[i_any]])
-
-    def route(self, origin: int, destination: int, lam: float) -> Route:
-        m = self.moves
-        o, d = self.index[origin], self.index[destination]
-        if m.junction[o] == m.junction[d]:
-            inside = m.internal(o, d)
-            if inside is None:
-                raise nx.NetworkXNoPath(f"no route from {origin} to {destination}")
-            return self._route_from_edges(o, np.array(inside[2], dtype=int), 0)
-        c = self.cost(lam)
-        S, T = len(m.external), len(m.external) + 1
-        ext_u, ext_v = self.u[m.external], self.v[m.external]
-        rows, cols, w = [], [], []
-        for s in np.flatnonzero(m.junction[ext_u] == m.junction[o]):
-            inside = m.internal(o, int(ext_u[s]))
-            if inside is not None:
-                e = m.external[s]
-                rows.append(S), cols.append(s)
-                w.append(inside[0] + lam * self.k * inside[1] + c[e] + 1e-9)
-        for s in np.flatnonzero(m.junction[ext_v] == m.junction[d]):
-            inside = m.internal(int(ext_v[s]), d)
-            if inside is not None:
-                rows.append(s), cols.append(T)
-                w.append(inside[0] + lam * self.k * inside[1] + 1e-9)
-        n = len(m.external) + 2
-        mat = self._matrix(lam) + csr_matrix((w, (rows, cols)), shape=(n, n))
-        _, pred = dijkstra(mat, indices=S, return_predecessors=True)
-        if pred[T] < 0:
-            raise nx.NetworkXNoPath(f"no route from {origin} to {destination}")
-        states = []
-        cur = pred[T]
-        while cur != S:
-            states.append(int(cur))
-            cur = pred[cur]
-        states.reverse()
-        edges: list[int] = []
-        prev_node = o
-        uturns = 0
-        for i, s in enumerate(states):
-            e = int(m.external[s])
-            edges += m.internal(prev_node, int(self.u[e]))[2]
-            if i > 0 and self._is_uturn(states[i - 1], s):
-                uturns += 1
-            edges.append(e)
-            prev_node = int(self.v[e])
-        edges += m.internal(prev_node, d)[2]
-        return self._route_from_edges(o, np.array(edges, dtype=int), uturns)
-
-    def _is_uturn(self, a: int, b: int) -> bool:
-        m = self.moves
-        hit = np.flatnonzero((m.move_from == a) & (m.move_to == b))
-        return bool(len(hit) and m.uturn[hit[0]])
-
-    def _route_from_edges(self, o: int, edges: np.ndarray, uturns: int) -> Route:
-        nodes = [int(self.nodes[o])] + [int(self.nodes[self.v[e]]) for e in edges]
-        return Route(
-            nodes=nodes,
-            edges=edges,
-            minutes=float(self.travel_time[edges].sum() / 60),
-            risk=float(self.risk[edges].sum()),
-            km=float(self.length[edges].sum() / 1000),
-            motorway_km=float(self.length[edges][self.is_motorway[edges]].sum() / 1000),
-            residential_km=float(self.length[edges][self.is_residential[edges]].sum() / 1000),
-            uturns=uturns,
-        )
-
-
-def fastest_route(router: Router, origin: int, destination: int) -> Route:
-    return router.route(origin, destination, 0.0)
-
-
-def safest_route(router: Router, origin: int, destination: int, lam: float) -> Route:
-    return router.route(origin, destination, lam)
-
-
-def route_stats(route: Route, fastest: Route) -> dict[str, float]:
-    """Minutes, expected crashes per million trips, and the trade-off against the fastest
-    route."""
-    return {
-        "minutes": route.minutes,
-        "expected_crashes": route.risk,
-        "km": route.km,
-        "extra_minutes": route.minutes - fastest.minutes,
-        "risk_reduction_pct": 100 * (1 - route.risk / fastest.risk) if fastest.risk > 0 else 0.0,
-    }
 
 
 def random_pairs(
