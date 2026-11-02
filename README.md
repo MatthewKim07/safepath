@@ -5,7 +5,9 @@ every intersection and on every road segment, from police-reported collisions an
 volumes, and routes with `cost = travel_time + λ · risk`. One slider moves between the fastest
 route and the safest one, and the app shows exactly what the safer route costs in minutes.
 
-**Live demo:** _URL to be added after deployment_ (Streamlit Community Cloud).
+**Live demo: [safepath-ml.streamlit.app](https://safepath-ml.streamlit.app)** (Toronto and
+London, Ontario). It runs on Streamlit Community Cloud's free tier, so an idle app may take
+about 30 seconds to wake.
 
 ## Results at a glance
 
