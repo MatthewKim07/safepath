@@ -65,11 +65,15 @@ def flag_proxies(
 
     r = rules["retail"]
     df[RETAIL] = (
-        (df["train_crashes"] >= r["min_train_crashes"])
-        & (df["train_severe_share"] <= r["max_severe_share"])
-        & (df["train_ftr_share"] >= r["min_ftr_share"])
-        & (df["dist_retail"] <= r["max_dist_retail_m"])
-    )
+        (
+            (df["train_crashes"] >= r["min_train_crashes"])
+            & (df["train_severe_share"] <= r["max_severe_share"])
+            & (df["train_ftr_share"] >= r["min_ftr_share"])
+            & (df["dist_retail"] <= r["max_dist_retail_m"])
+        )
+        .fillna(False)
+        .astype(bool)
+    )  # a city without fail-to-remain data (Ottawa) never fires
 
     e = rules["expressway"]
     # Expected count = median train crashes among intersections of the same class combo that
@@ -80,9 +84,13 @@ def flag_proxies(
     )
     df["ratio_to_combo_median"] = df["train_crashes"] / df["combo_median_train_crashes"]
     df[EXPRESSWAY] = (
-        (df["dist_motorway"] <= e["max_dist_motorway_m"])
-        & (df["train_crashes"] >= e["min_train_crashes"])
-        & (df["ratio_to_combo_median"] >= e["min_ratio_to_combo_median"])
+        (
+            (df["dist_motorway"] <= e["max_dist_motorway_m"])
+            & (df["train_crashes"] >= e["min_train_crashes"])
+            & (df["ratio_to_combo_median"] >= e["min_ratio_to_combo_median"])
+        )
+        .fillna(False)
+        .astype(bool)
     )
     df["exclusion_reason"] = np.select(
         [df[RETAIL], df[EXPRESSWAY]], [RETAIL, EXPRESSWAY], default=None

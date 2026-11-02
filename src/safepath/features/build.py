@@ -239,7 +239,11 @@ def build_model_table(
 ) -> pd.DataFrame:
     """Label rows for train / val / test years joined with history and static features."""
     splits = cfg["splits"]
-    label_years = sorted(splits["train"] + splits["val"] + splits["test"])
+    # `calibration` years (Ottawa 2021) get feature rows too, split "history": they are
+    # never trained on, only used to fit the prior-year level adjustment
+    label_years = sorted(
+        splits["train"] + splits["val"] + splits["test"] + splits.get("calibration", [])
+    )
     history = history_features(labels, label_years)
     table = (
         labels[labels["year"].isin(label_years)]

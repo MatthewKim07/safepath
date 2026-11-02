@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -53,10 +54,20 @@ def require_rows(frame: Any, what: str) -> Any:
     return frame
 
 
+OVERPASS_ENV = "SAFEPATH_OVERPASS_URL"
+
+
 def configure_osmnx(cfg: dict[str, Any]) -> None:
+    """Cache OSMnx responses under raw_dir. $SAFEPATH_OVERPASS_URL points OSMnx at another
+    Overpass instance (e.g. when the main one is rate-limiting this machine)."""
     ox.settings.cache_folder = str(Path(cfg["paths"]["raw_dir"]) / "osmnx_cache")
     ox.settings.use_cache = True
     ox.settings.log_console = False
+    url = os.environ.get(OVERPASS_ENV)
+    if url:
+        ox.settings.overpass_url = url.rstrip("/")
+        ox.settings.overpass_rate_limit = False  # mirrors rarely expose /status
+        log.info("using Overpass at %s", url)
 
 
 def fetch_settings(cfg: dict[str, Any]) -> dict[str, float]:

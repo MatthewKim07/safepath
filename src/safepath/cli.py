@@ -28,6 +28,7 @@ from safepath.models.eb import run_eb
 from safepath.models.spf import run_spf
 from safepath.models.train import run_train
 from safepath.models.volume_report import run_volume_model
+from safepath.ottawa.build import run_ottawa_build
 from safepath.risk import run_score
 from safepath.routing import run_routing
 from safepath.snap_report import run_snap_report
@@ -92,8 +93,12 @@ STEPS: dict[str, tuple[str, Callable[[dict], None]]] = {
         "Ottawa: download and clean collisions and intersection counts",
         lambda cfg: run_ottawa_data(ottawa_config(cfg)),
     ),
+    "ottawa-build": (
+        "Ottawa: graph, location check, snapping, labels and features (Toronto code paths)",
+        lambda cfg: run_ottawa_build(ottawa_config(cfg)),
+    ),
 }
-OTTAWA_PIPELINE = ["ottawa-data"]
+OTTAWA_PIPELINE = ["ottawa-data", "ottawa-build"]
 PIPELINE = [
     "download",
     "clean",

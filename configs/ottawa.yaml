@@ -41,6 +41,8 @@ splits:
   train: [2016, 2017, 2018, 2019]
   val: [2022]
   test: [2024]
+  # feature rows only, to fit validation's prior-year level scalar; never trained on
+  calibration: [2021]
   # 2013-2015 and 2020-2021 are history only; 2023 is unpublished; 2025 is not yet out.
 
 ottawa:
