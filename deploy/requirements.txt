@@ -1,0 +1,3 @@
+# Streamlit Community Cloud reads this file from the entrypoint's directory, so the deploy
+# installs only the slim app requirements, not the pipeline in pyproject.toml.
+-r ../requirements-app.txt
