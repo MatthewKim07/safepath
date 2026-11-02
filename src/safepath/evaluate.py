@@ -289,6 +289,9 @@ def run_evaluate(cfg: dict[str, Any]) -> dict[str, Any]:
     (reports / "metrics.json").write_text(json.dumps(results, indent=2))
     write_metrics_md(results, rows, reports / "metrics.md")
     run_comparison(cfg, rows)
+    from safepath.evaluate_gnn import run_gnn_evaluation  # it imports from this module
+
+    run_gnn_evaluation(cfg)
     log.info("wrote metrics for val and test")
     return results
 

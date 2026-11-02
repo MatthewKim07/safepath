@@ -697,7 +697,7 @@
             "num_leaves": 31,
             "min_data_in_leaf": 50,
             "best_iteration": 1160,
-            "val_poisson": -3.4638510852010658
+            "val_poisson": -3.4638510852010653
           },
           {
             "num_leaves": 31,
@@ -746,7 +746,7 @@
             "num_leaves": 31,
             "min_data_in_leaf": 50,
             "best_iteration": 3000,
-            "val_poisson": -3.3671159543847016
+            "val_poisson": -3.367115954384702
           },
           {
             "num_leaves": 31,
@@ -764,7 +764,7 @@
             "num_leaves": 63,
             "min_data_in_leaf": 200,
             "best_iteration": 3000,
-            "val_poisson": -3.4071161780600447
+            "val_poisson": -3.407116178060045
           }
         ],
         "best_params": {
@@ -920,6 +920,55 @@
         },
         "best_iteration": 914,
         "best_val_poisson": -3.4761244477046076
+      },
+      "lgbm_aadt_nbr": {
+        "feature_set": "aadt_nbr",
+        "target": "crash_count",
+        "n_features": 57,
+        "search": [
+          {
+            "num_leaves": 15,
+            "min_data_in_leaf": 50,
+            "best_iteration": 1592,
+            "val_poisson": -3.474456369188808
+          },
+          {
+            "num_leaves": 15,
+            "min_data_in_leaf": 200,
+            "best_iteration": 2620,
+            "val_poisson": -3.4764672978267575
+          },
+          {
+            "num_leaves": 31,
+            "min_data_in_leaf": 50,
+            "best_iteration": 1183,
+            "val_poisson": -3.4771570299177395
+          },
+          {
+            "num_leaves": 31,
+            "min_data_in_leaf": 200,
+            "best_iteration": 1201,
+            "val_poisson": -3.4766798808354955
+          },
+          {
+            "num_leaves": 63,
+            "min_data_in_leaf": 50,
+            "best_iteration": 842,
+            "val_poisson": -3.4776809585537563
+          },
+          {
+            "num_leaves": 63,
+            "min_data_in_leaf": 200,
+            "best_iteration": 646,
+            "val_poisson": -3.4772578283878532
+          }
+        ],
+        "best_params": {
+          "num_leaves": 63,
+          "min_data_in_leaf": 50
+        },
+        "best_iteration": 842,
+        "best_val_poisson": -3.4776809585537563
       }
     },
     "spatial_holdout": {
