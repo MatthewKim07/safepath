@@ -206,6 +206,21 @@ def write_report(cfg: dict[str, Any], r: dict[str, Any], path: Path) -> None:
     path.write_text("\n".join(lines) + "\n")
 
 
+VOLUME_BOOSTERS = {"inter": "volume_intersections.txt", "seg": "volume_segments.txt"}
+VOLUME_CATEGORIES = "volume_categories.json"
+
+
+def save_boosters(cfg: dict[str, Any], r: dict[str, Any], cats: dict[str, list]) -> None:
+    """The final (all-counts) volume models, for applying them to another city."""
+    out = Path(cfg["paths"]["models_dir"])
+    out.mkdir(parents=True, exist_ok=True)
+    for unit, name in VOLUME_BOOSTERS.items():
+        r[unit]["booster"].save_model(out / name)
+    (out / VOLUME_CATEGORIES).write_text(
+        json.dumps({**cats, "v_model": {u: r[u]["v_model"] for u in VOLUME_BOOSTERS}}, indent=2)
+    )
+
+
 def run_volume_model(cfg: dict[str, Any]) -> dict[str, Any]:
     processed = Path(cfg["paths"]["processed_dir"])
     figures = Path(cfg["paths"]["figures_dir"])
@@ -356,6 +371,7 @@ def run_volume_model(cfg: dict[str, Any]) -> dict[str, Any]:
             indent=2,
         )
     )
+    save_boosters(cfg, r, cats)
     write_report(cfg, r, Path(cfg["paths"]["reports_dir"]) / "volume_model.md")
     config = {"params": PARAMS, "centrality": CENTRALITY, "min_target_year": MIN_TARGET_YEAR,
               "predict_year": PREDICT_YEAR, "cv": "5-fold, 2 km spatial blocks"}  # fmt: skip
