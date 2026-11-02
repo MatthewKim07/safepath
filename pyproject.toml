@@ -50,4 +50,6 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "NPY"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# tests/gnn imports torch; it runs in its own process (tests/test_process_isolation.py)
+# because torch and LightGBM load different OpenMP runtimes that crash when both run threads
+addopts = "-q --ignore=tests/gnn"
