@@ -33,16 +33,18 @@ def _spearman(table: pd.DataFrame, col: str) -> float:
 
 
 def conclusions(r: dict[str, Any], vol: dict[str, Any]) -> list[str]:
+    """Both views of the Ottawa result, each claim backed by a paired CI on test 2024."""
     from safepath.ottawa.transfer import MODELS, label
 
     t, p = r["test"]["table"], r["test"]["paired"].set_index("comparison")
-    best_a, best_cf, best_b = r["best"]["A"], r["best"]["A_countfree"], r["best"]["B"]
+    best_a, best_b = r["best"]["A"], r["best"]["B"]
 
-    def pair(a: str, b: str) -> tuple[float, tuple[float, float]]:
-        row = p.loc[f"{label(a)} − {label(b)}"]
-        return float(row["_d"]), tuple(row["_ci"])
+    def pair(a: str, b: str, metric: str = "spearman") -> tuple[float, tuple[float, float]]:
+        d, ci = p.loc[f"{label(a)} − {label(b)}", f"_{metric}"]
+        return float(d), (float(ci[0]), float(ci[1]))
 
-    def fmt(d: float, ci: tuple[float, float]) -> str:
+    def fmt(a: str, b: str, metric: str = "spearman") -> str:
+        d, ci = pair(a, b, metric)
         return f"{d:+.3f} [{ci[0]:+.3f}, {ci[1]:+.3f}] ({_verdict(ci)})"
 
     m = pd.DataFrame(vol["metrics"])
@@ -52,95 +54,69 @@ def conclusions(r: dict[str, Any], vol: dict[str, Any]) -> list[str]:
     up = m.loc["Ottawa-trained LightGBM (spatial CV, upper bound)"]
     base = m.loc["Ottawa class median (spatial CV)"]
     sp = {c: _spearman(t, c) for c in MODELS}
-    sp_r5 = {row["_col"]: float(row["recall@5% [95% CI]"].split()[0]) for _, row in t.iterrows()}
+    r5 = {row["_col"]: float(row["recall@5% [95% CI]"].split()[0]) for _, row in t.iterrows()}
+    b_models = [c for c in MODELS if MODELS[c][0] == "B"]
+    b_r5 = [pair(c, "upper_lgbm_aadt", "recall5") for c in b_models]
+    b_r5_span = max(max(abs(ci[0]), abs(ci[1])) for _, ci in b_r5)
+    b_r5_all_tie = all(ci[0] <= 0 <= ci[1] for _, ci in b_r5)
+    b_pr = [pair(c, "upper_lgbm_aadt", "pr_auc")[0] for c in b_models]
+    c = r["ceiling"].set_index("setting")
+    t_obs = float(c.loc["Toronto 2025: LightGBM + AADT, observed", "Spearman"])
+    thin = float(c[c.index.str.contains("thinned")].iloc[0]["Spearman"])
     sh = r["shift"][r["shift"]["SMD"].abs() > 0.2]
     shifts = ", ".join(f"{f} {v:+.2f}" for f, v in zip(sh["feature"], sh["SMD"], strict=True))
     rates = r["rates"].set_index(["city", "intersections"])["crashes per MEV"]
-    o_rate, t_rate = rates[("Ottawa", "all")], rates[("Toronto", "all")]
-    c = r["ceiling"].set_index("setting")
-    o_ceil = float(c.loc["Ottawa 2024: noise ceiling", "Spearman"])
-    t_ceil = float(c.loc["Toronto 2025: noise ceiling", "Spearman"])
-    t_obs = float(c.loc["Toronto 2025: LightGBM + AADT, observed", "Spearman"])
-    thin = c[c.index.str.contains("thinned")].iloc[0]
-    lines = [
-        f"- **Sparsity sets the scale.** Ottawa averages {c.iloc[1, 0]:.2f} crashes per "
-        f"intersection-year against Toronto's {c.iloc[0, 0]:.2f} (Ottawa keeps mid-block "
-        "crashes mid-block, and its level is lower). Thinning Toronto's own 2025 crashes to "
-        f"Ottawa's rate drops Toronto's LightGBM + AADT from {t_obs:.3f} to "
-        f"**{thin['Spearman']:.3f}** with nothing else changed, so about "
-        f"{t_obs - thin['Spearman']:.2f} of the Toronto-Ottawa difference in headline "
-        "Spearman is the sparser target, not the transfer. What remains (thinned Toronto "
-        f"{thin['Spearman']:.3f} vs {sp[best_b]:.3f} for the best transferred model and "
-        f"{sp['upper_lgbm_aadt']:.3f} for the Ottawa-trained one) mixes transfer loss with "
-        "real differences between the cities. The model-based Poisson ceiling ("
-        f"{o_ceil:.2f} in Ottawa, {t_ceil:.2f} in Toronto) is only a lower bound: Ottawa's "
-        f"prev-3-year mean already reaches it ({sp['prev3_mean']:.3f}), so true risk is more "
-        "spread out than the Ottawa-trained model's estimate. Compare models within a city, "
-        "never Ottawa's Spearman with Toronto's.",
-        f"- **Volumes transfer badly.** Toronto's AADT model on Ottawa's counted "
-        f"intersections: R² {tor['r2_log']:.2f} (raw betweenness {raw['r2_log']:.2f}), median "
-        f"abs error {tor['median_abs_pct_err']:.0f}%, over-predicting by "
-        f"x{np.exp(tor['bias_log']):.1f} (Toronto's own CV: 0.85, 21%). Ottawa class medians "
-        f"do better ({base['r2_log']:.2f} / {base['median_abs_pct_err']:.0f}%); an "
-        f"Ottawa-trained model reaches {up['r2_log']:.2f} / {up['median_abs_pct_err']:.0f}%. "
-        f"So the crash models' exposure is Ottawa's: {vol['aadt_source']} blended with counts.",
-        *(
-            [
-                f"- **No Ottawa crash labels** (A): the best on validation is {label(best_a)}, "
-                f"which uses no Ottawa data at all: test Spearman {sp[best_a]:.3f}; minus "
-                f"Ottawa's class-combo means {fmt(*pair(best_a, 'class_combo_mean'))}."
-            ]
-            if best_a == best_cf
-            else [
-                f"- **No Ottawa crash labels, no Ottawa counts** (count-free part of A): best "
-                f"on validation {label(best_cf)}, test Spearman {sp[best_cf]:.3f}; minus "
-                f"class-combo means {fmt(*pair(best_cf, 'class_combo_mean'))}.",
-                f"- **No Ottawa crash labels, Ottawa counts for exposure** (all of A): best on "
-                f"validation {label(best_a)}, test Spearman {sp[best_a]:.3f}; minus "
-                f"class-combo means {fmt(*pair(best_a, 'class_combo_mean'))}.",
-            ]
-        ),
-        "  With road features alone Toronto knowledge does not beat a one-number-per-class "
-        "Ottawa baseline on Spearman, though every road-only model beats it on recall@5% "
-        f"(by {sp_r5['road_mlp'] - sp_r5['class_combo_mean']:.2f} to "
-        f"{sp_r5['road_lgbm'] - sp_r5['class_combo_mean']:.2f}; the class mean cannot rank "
-        "within a class). Ottawa counts barely matter here: the SPF with Ottawa AADT "
-        f"{sp['spf']:.3f} vs count-free {sp['spf_countfree']:.3f}.",
-        f"- **Does the graph help in a new city?** Road-only GraphSAGE minus road-only "
-        f"LightGBM {fmt(*pair('road_sage', 'road_lgbm'))}; minus the graph-free MLP "
-        f"{fmt(*pair('road_sage', 'road_mlp'))}. LightGBM minus MLP "
-        f"{fmt(*pair('road_lgbm', 'road_mlp'))}. On Spearman the neural models transfer "
-        "better than the trees and message passing does not add to the MLP; on recall@5% "
-        "the order flips (LightGBM > GraphSAGE > MLP). No model family wins both, so the "
-        "graph is not a clear help in Ottawa. Road-only GraphSAGE also sees Ottawa counts "
-        "through its edge AADT, the MLP and LightGBM do not.",
-        f"- **With Ottawa's crash history as features** (B, no Ottawa training labels) the "
-        f"best on validation is {label(best_b)}, test Spearman {sp[best_b]:.3f}, but it "
-        "trails the simplest "
-        f"Ottawa-native baseline: minus persistence {fmt(*pair(best_b, 'persistence'))}; "
-        f"prev-3-year mean {sp['prev3_mean']:.3f}. Toronto's trees and GNNs with history "
-        f"({sp['lgbm_aadt']:.3f}-{sp['lgbm_aadt_nbr']:.3f}, GraphSAGE "
-        f"{sp['sage_history']:.3f}) do worse than EB. A likely reason: they learned how much "
-        "to trust history at Toronto's density of crashes and lean on the road / volume "
-        "prior where Ottawa's own history is more informative; they also over-predict the "
-        "level 1.5-2.4x raw.",
-        f"- **Feature shift** (|SMD| > 0.2, Ottawa vs Toronto): {shifts}. Crashes per "
-        f"million entering vehicles: Ottawa {o_rate:.2f}, Toronto {t_rate:.2f}. Part of that "
-        "is geocoding (TPS puts ~96% of crashes on intersections, Ottawa's records put "
-        "~75% within the snap radius); the data cannot separate the rest into reporting "
-        "and real safety differences.",
-        f"- **Upper-bound gap:** best transferred (B) minus LightGBM + AADT trained on "
-        f"Ottawa 2016-2019 {fmt(*pair(best_b, 'upper_lgbm_aadt'))}. Even the Ottawa-trained "
-        f"model ({sp['upper_lgbm_aadt']:.3f}) does not beat the prev-3-year mean on Spearman, "
-        "though it is the best calibrated model per vehicle and leads on PR-AUC.",
-        "- **Verdict:** Toronto's crash models carry over to Ottawa as rankings that are "
-        "better than chance and useful for top-k hotspot lists (recall@5% about 0.69 with "
-        "history, as good as Ottawa's own models), but not better than Ottawa's own crash "
-        "history. The transferable part is the EB recipe (SPF + local history), not the "
-        "trees or the GNNs. A city adopting this should bring its own counts and at least a "
-        "few years of its own crash history.",
+    return [
+        "Two views of the same test year (2024), every difference with a paired 95% bootstrap "
+        "CI over intersections. Spearman is dominated by ties here (83% of intersection-years "
+        "have no crash), so hotspot recall@5% and PR-AUC are co-primary.",
+        "",
+        f"- **On Spearman, nothing beats Ottawa's own prev-3-year mean ({sp['prev3_mean']:.3f}).** "
+        f"Best transferred model ({label(best_b)}) minus it: {fmt(best_b, 'prev3_mean')}; "
+        f"the Ottawa-trained upper bound minus it: {fmt('upper_lgbm_aadt', 'prev3_mean')}.",
+        "- **On hotspot recall, Toronto models fed Ottawa's crash history match the "
+        "Ottawa-trained upper bound.** Recall@5% minus the upper bound for each group-B model: "
+        + "; ".join(f"{MODELS[cc][1]} {fmt(cc, 'upper_lgbm_aadt', 'recall5')}" for cc in b_models)
+        + (f" - every CI contains zero and lies within ±{b_r5_span:.3f}." if b_r5_all_tie else ".")
+        + f" On PR-AUC they trail it ({min(b_pr):+.3f} to {max(b_pr):+.3f}, all CIs below "
+        "zero), so the upper bound ranks the whole list better while the top 5% is the same.",
+        f"- **EB vs persistence** is the same split: Spearman {fmt('eb', 'persistence')}, "
+        f"recall@5% {fmt('eb', 'persistence', 'recall5')}, PR-AUC "
+        f"{fmt('eb', 'persistence', 'pr_auc')}.",
+        f"- **With no Ottawa data at all, the count-free SPF roughly doubles the road-class "
+        f"baseline's hotspot recall**: {r5['spf_countfree']:.3f} vs {r5['class_combo_mean']:.3f} "
+        f"(x{r5['spf_countfree'] / r5['class_combo_mean']:.1f}; difference "
+        f"{fmt('spf_countfree', 'class_combo_mean', 'recall5')}; PR-AUC "
+        f"{fmt('spf_countfree', 'class_combo_mean', 'pr_auc')}). On Spearman it is below the "
+        f"class means ({fmt('spf_countfree', 'class_combo_mean')}): the class mean ties whole "
+        "classes, which Spearman rewards on mostly-zero data, but it cannot pick out the busy "
+        f"few. The best road-only model on validation Spearman, {label(best_a)}, shows the same "
+        f"pattern: Spearman {fmt(best_a, 'class_combo_mean')}, recall@5% "
+        f"{fmt(best_a, 'class_combo_mean', 'recall5')}.",
+        f"- **Why Ottawa's numbers are lower than Toronto's: sparsity.** Ottawa has "
+        f"{c.iloc[1, 0]:.2f} crashes per intersection-year against Toronto's {c.iloc[0, 0]:.2f}. "
+        f"Thinning Toronto's own 2025 crashes to Ottawa's rate drops Toronto's LightGBM + AADT "
+        f"from {t_obs:.3f} to {thin:.3f} Spearman with nothing else changed. Compare models "
+        "within a city, never Ottawa's Spearman with Toronto's.",
+        f"- **Does the graph help in a new city?** Not clearly. Road-only GraphSAGE minus "
+        f"LightGBM: Spearman {fmt('road_sage', 'road_lgbm')}, recall@5% "
+        f"{fmt('road_sage', 'road_lgbm', 'recall5')}; minus the graph-free MLP: Spearman "
+        f"{fmt('road_sage', 'road_mlp')}, recall@5% {fmt('road_sage', 'road_mlp', 'recall5')}.",
+        f"- **Volumes transfer badly**: Toronto's AADT model on Ottawa counts R² "
+        f"{tor['r2_log']:.2f} (raw betweenness {raw['r2_log']:.2f}), over-predicting "
+        f"x{np.exp(tor['bias_log']):.1f}; Ottawa class medians {base['r2_log']:.2f}; an "
+        f"Ottawa-trained model {up['r2_log']:.2f}. Exposure for the count-using models is "
+        f"Ottawa's ({vol['aadt_source']} blended with counts).",
+        f"- **Feature shift** (|SMD| > 0.2): {shifts}. Crashes per million entering vehicles: "
+        f"Ottawa {rates[('Ottawa', 'all')]:.2f}, Toronto {rates[('Toronto', 'all')]:.2f}; "
+        "part of that is geocoding (TPS puts ~96% of crashes on intersections, Ottawa ~75%).",
+        "- **Verdict:** for finding the top hotspots, Toronto's models transfer: with Ottawa "
+        "history they find as many of the next year's crashes in their top 5% as a model "
+        "trained on Ottawa, and with no Ottawa data at all the count-free SPF finds about "
+        "twice what a road-class lookup does. On Spearman, Ottawa's own three-year average is "
+        "still best and no Toronto model beats it (on PR-AUC the Ottawa-trained model is ahead "
+        f"of that average, {fmt('upper_lgbm_aadt', 'prev3_mean', 'pr_auc')}).",
     ]
-    return lines
 
 
 LIMITATIONS = [

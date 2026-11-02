@@ -19,10 +19,11 @@ route and the safest one, and the app shows exactly what the safer route costs i
   only ~8% of their crashes. SafePath uses the Ministry of Transportation's own rates, and
   moves Gardiner/DVP crashes that police place at surface streets back onto the expressway,
   which lands both in the MTO freeway range.
-- **Tested in a second city.** On Ottawa, with no Ottawa crash labels in training,
-  Toronto's EB recipe with Ottawa's own crash history finds hotspots as well as an
-  Ottawa-trained model (recall@5% 0.69), but no Toronto model beats Ottawa's own
-  three-year crash average on Spearman. The cross-city result is reported as is.
+- **Tested in a second city.** On Ottawa, with no Ottawa crash labels in training, Toronto
+  models fed Ottawa's crash history find as many next-year crashes in their top 5% as an
+  Ottawa-trained model (recall@5% 0.69, paired CIs within ±0.008), and with no Ottawa data at
+  all the SPF doubles a road-class lookup (0.62 vs 0.29). On Spearman, Ottawa's own three-year
+  crash average still beats every Toronto model.
 
 ![Union Station to Yorkdale: count-based (red) vs per-vehicle (green) safest route](reports/figures/before_after_union_yorkdale.png)
 
@@ -167,30 +168,35 @@ training. Freeway crashes (Hwy 416/417, OPP roads absent from Toronto's data) ar
 Ottawa traffic counts provide exposure; Toronto's volume model alone transfers badly (R² 0.57
 on Ottawa counts vs 0.85 at home), so Ottawa AADT comes from an Ottawa-trained volume model.
 
-| test 2024 | Ottawa data used | Spearman [95% CI] | recall@5% [95% CI] |
-|---|---|---|---|
-| Road features only: LightGBM / MLP / GraphSAGE | OSM (+ counts for GraphSAGE edges) | 0.318 / **0.366** / 0.352 | **0.586** / 0.517 / 0.556 |
-| SPF with Ottawa AADT | OSM + counts | 0.368 [0.352, 0.384] | 0.617 [0.586, 0.644] |
-| LightGBM + AADT (Ottawa history as features) | + crash history | 0.425 [0.410, 0.440] | 0.689 [0.666, 0.707] |
-| **EB** (Toronto SPF + Ottawa history) | + crash history | 0.449 [0.435, 0.464] | **0.691** [0.668, 0.710] |
-| Ottawa class-combo mean | Ottawa labels | 0.398 [0.383, 0.411] | 0.288 [0.259, 0.316] |
-| Ottawa prev-3-year mean | Ottawa history | **0.526** [0.509, 0.543] | 0.684 [0.659, 0.702] |
-| LightGBM + AADT trained on Ottawa (upper bound) | Ottawa labels | 0.488 [0.475, 0.501] | 0.690 [0.667, 0.709] |
+| test 2024 | Ottawa data used | Spearman [95% CI] | recall@5% [95% CI] | PR-AUC |
+|---|---|---|---|---:|
+| Road features only: LightGBM / MLP / GraphSAGE | OSM (+ counts for GraphSAGE edges) | 0.318 / 0.366 / 0.352 | 0.586 / 0.517 / 0.556 | 0.566 / 0.519 / 0.558 |
+| SPF, count-free (Toronto volume models) | OSM only | 0.363 [0.347, 0.379] | 0.619 [0.589, 0.646] | 0.576 |
+| LightGBM + AADT (Ottawa history as features) | + counts, crash history | 0.425 [0.410, 0.440] | 0.689 [0.666, 0.707] | 0.677 |
+| **EB** (Toronto SPF + Ottawa history) | + counts, crash history | 0.449 [0.435, 0.464] | **0.691** [0.668, 0.710] | 0.683 |
+| Ottawa class-combo mean | Ottawa labels | 0.398 [0.383, 0.411] | 0.288 [0.259, 0.316] | 0.387 |
+| Ottawa prev-3-year mean | Ottawa history | **0.526** [0.509, 0.543] | 0.684 [0.659, 0.702] | 0.601 |
+| LightGBM + AADT trained on Ottawa (upper bound) | Ottawa labels | 0.488 [0.475, 0.501] | 0.690 [0.667, 0.709] | **0.710** |
 
-- **Sparsity first.** Ottawa has 0.57 crashes per intersection-year against Toronto's 2.35,
-  partly because Ottawa records keep mid-block crashes mid-block while Toronto Police place
-  almost all of them at intersections (1.4 vs ~38 crashes per distinct location). Thinning
-  Toronto's own 2025 crashes to Ottawa's rate drops Toronto's best model from 0.744 to 0.584
-  Spearman, so Ottawa's numbers are not comparable with Toronto's.
-- **What transfers:** with Ottawa's own crash history, Toronto's EB recipe is the best
-  transferred model and matches the Ottawa-trained model on recall@5%, but trails it on
-  Spearman (−0.039 [−0.047, −0.030]) and trails Ottawa's three-year average more.
-  Toronto's trees and GNNs with history transfer worse than EB.
-- **Road features alone** do not beat Ottawa's class-combo means on Spearman (best: MLP,
-  −0.032 [−0.047, −0.016]) but beat them on recall@5% by 0.23-0.30.
-- **Does the graph help?** Not clearly. Road-only GraphSAGE beats road-only LightGBM on
+83% of Ottawa intersection-years have no crash, so Spearman is dominated by ties; hotspot
+recall@5% and PR-AUC are co-primary. Paired bootstrap CIs on test 2024:
+
+- **Hotspots:** every Toronto model fed Ottawa's history matches the Ottawa-trained upper
+  bound on recall@5% (differences −0.002 to +0.001, all CIs within ±0.008). On PR-AUC they
+  trail it by 0.026-0.051 (CIs below zero).
+- **No Ottawa data at all:** the count-free SPF roughly doubles the road-class baseline's
+  recall@5% (+0.331 [+0.295, +0.369]) and PR-AUC (+0.189 [+0.172, +0.206]), though it is
+  below the class means on Spearman (−0.035 [−0.052, −0.018]).
+- **Ranking everything:** on Spearman nothing beats Ottawa's own three-year average (EB
+  −0.077 [−0.087, −0.066]; Ottawa-trained −0.038 [−0.050, −0.027]).
+- **Why the numbers are lower than Toronto's: sparsity.** Ottawa has 0.57 crashes per
+  intersection-year against Toronto's 2.35, partly because Ottawa records keep mid-block
+  crashes mid-block while Toronto Police place almost all at intersections (1.4 vs ~38
+  crashes per distinct location). Thinning Toronto's own 2025 crashes to Ottawa's rate drops
+  Toronto's best model from 0.744 to 0.584 Spearman.
+- **Does the graph help?** Not clearly: road-only GraphSAGE beats road-only LightGBM on
   Spearman (+0.034) but loses on recall@5% (−0.030), and trails the graph-free MLP on
-  Spearman (−0.014).
+  Spearman (−0.014) while beating it on recall@5% (+0.039).
 
 Ottawa 2023 collisions are unpublished, and 2024 shows a recording change (non-reportable
 records appear, minor-injury crashes halve), so severity is not compared. Details, location

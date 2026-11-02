@@ -32,9 +32,10 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
+from sklearn.metrics import average_precision_score
 
 from safepath import tracking
-from safepath.evaluate import N_BOOT, bootstrap, point_metrics
+from safepath.evaluate import N_BOOT, bootstrap, hotspot_recall, point_metrics
 from safepath.features.build import STATIC
 from safepath.features.labels import LABELS
 from safepath.features.volume_features import INTERSECTION_EXPOSURE
@@ -278,19 +279,30 @@ def score_split(d: pd.DataFrame, scal: dict[str, float], seed: int) -> pd.DataFr
 
 
 def paired(d: pd.DataFrame, pairs: list[tuple[str, str]], seed: int) -> pd.DataFrame:
+    """a - b with paired bootstrap 95% CIs (same intersection resamples for both models) for
+    Spearman, recall@5% and PR-AUC: co-primary in a sparse city, where Spearman is dominated by
+    ties among the ~83% zero-crash intersection-years."""
     y = d["crash_count"].to_numpy(float)
+    rng = np.random.default_rng(seed)
+    idx = rng.integers(0, len(y), (N_BOOT, len(y)))
+    metrics = {
+        "spearman": lambda yy, pp: spearmanr(pp, yy).statistic,
+        "recall5": lambda yy, pp: hotspot_recall(yy, pp, 0.05),
+        "pr_auc": lambda yy, pp: average_precision_score(yy > 0, pp),
+    }
     out = []
     for a, b in pairs:
-        boot = bootstrap(y, {a: d[a].to_numpy(float), b: d[b].to_numpy(float)}, b, N_BOOT, seed)
-        m = boot[a]
-        s_lo, s_hi = m["spearman_diff_vs_ref_ci"]
-        r_lo, r_hi = m["recall_top5_diff_vs_ref_ci"]
-        out.append({
-            "comparison": f"{label(a)} − {label(b)}",
-            "Spearman": f"{m['spearman_diff_vs_ref']:+.3f} [{s_lo:+.3f}, {s_hi:+.3f}]",
-            "recall@5%": f"{m['recall_top5_diff_vs_ref']:+.3f} [{r_lo:+.3f}, {r_hi:+.3f}]",
-            "_d": m["spearman_diff_vs_ref"], "_ci": (s_lo, s_hi),
-        })  # fmt: skip
+        pa, pb = d[a].to_numpy(float), d[b].to_numpy(float)
+        row: dict[str, Any] = {"comparison": f"{label(a)} − {label(b)}", "_a": a, "_b": b}
+        for name, f in metrics.items():
+            point = f(y, pa) - f(y, pb)
+            diffs = np.array([f(y[i], pa[i]) - f(y[i], pb[i]) for i in idx])
+            lo, hi = np.percentile(diffs, [2.5, 97.5])
+            row[{"spearman": "Spearman", "recall5": "recall@5%", "pr_auc": "PR-AUC"}[name]] = (
+                f"{point:+.3f} [{lo:+.3f}, {hi:+.3f}]")  # fmt: skip
+            row[f"_{name}"] = (float(point), (float(lo), float(hi)))
+        row["_d"], row["_ci"] = row["_spearman"]
+        out.append(row)
     return pd.DataFrame(out)
 
 
@@ -428,8 +440,10 @@ def run_ottawa_transfer(cfg: dict[str, Any], toronto: dict[str, Any]) -> dict[st
     best_cf = best_of(r["val"]["table"], "A", COUNT_FREE_A)
     pairs = [(best_a, "class_combo_mean"), (best_cf, "class_combo_mean"),
              ("road_sage", "road_lgbm"), ("road_sage", "road_mlp"), ("road_lgbm", "road_mlp"),
-             ("eb", "persistence"), (best_b, "upper_lgbm_aadt"),
-             (best_b, "persistence")]  # fmt: skip
+             ("eb", "persistence"), (best_b, "persistence")]  # fmt: skip
+    pairs.insert(2, ("spf_countfree", "class_combo_mean"))
+    pairs += [(m, "upper_lgbm_aadt") for m in MODELS if MODELS[m][0] == "B"]
+    pairs += [(best_b, "prev3_mean"), ("upper_lgbm_aadt", "prev3_mean")]
     pairs = list(dict.fromkeys(pairs))  # the best models may coincide with fixed pairs
     for i, split in enumerate(("val", "test")):
         d = clean[clean["year"] == r[split]["year"]].reset_index(drop=True)
