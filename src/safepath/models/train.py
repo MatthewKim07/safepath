@@ -13,6 +13,7 @@ import pandas as pd
 
 from safepath import tracking
 from safepath.features.build import MODEL_TABLE
+from safepath.features.neighbours import neighbour_table
 from safepath.features.volume_features import INTERSECTION_EXPOSURE
 from safepath.graph import INTERSECTIONS
 from safepath.models import lgbm
@@ -27,6 +28,7 @@ MODELS = {
     "lgbm_with_coords": ("with_coords", "crash_count"),
     "lgbm_severe": ("main", "severe_count"),
     "lgbm_aadt": ("aadt", "crash_count"),
+    "lgbm_aadt_nbr": ("aadt_nbr", "crash_count"),
 }
 
 
@@ -44,7 +46,8 @@ def load_table(cfg: dict[str, Any]) -> pd.DataFrame:
             "log_aadt_minor": np.log(expo["minor_aadt"]),  # NaN with a single road
         }
     )
-    return table.merge(expo, on="intersection_id", how="left")
+    table = table.merge(expo, on="intersection_id", how="left")
+    return table.merge(neighbour_table(cfg, table), on=["intersection_id", "year"], how="left")
 
 
 def categories(table: pd.DataFrame) -> dict[str, list]:

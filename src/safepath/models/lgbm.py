@@ -10,6 +10,8 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
+from safepath.features.neighbours import NEIGHBOUR_FEATURES
+
 log = logging.getLogger(__name__)
 
 STATIC_FEATURES = [
@@ -34,6 +36,7 @@ FEATURE_SETS = {
     "static_only": STATIC_FEATURES,
     "with_coords": STATIC_FEATURES + HISTORY_FEATURES + COORD_FEATURES,
     "aadt": STATIC_FEATURES + HISTORY_FEATURES + AADT_FEATURES,
+    "aadt_nbr": STATIC_FEATURES + HISTORY_FEATURES + AADT_FEATURES + NEIGHBOUR_FEATURES,
 }
 
 BASE_PARAMS = {

@@ -30,17 +30,14 @@ import torch
 from safepath.features.build import STATIC
 from safepath.features.history import history_features
 from safepath.features.labels import LABELS
-from safepath.features.roads import class_rank
-from safepath.features.static import first_number
+from safepath.features.neighbours import build_edges
 from safepath.features.volume_features import INTERSECTION_EXPOSURE
-from safepath.graph import INTERSECTIONS, NODE_MAP, SEGMENTS
+from safepath.graph import INTERSECTIONS
 from safepath.models import lgbm
-from safepath.models.volume import AADT_EDGES
 
 log = logging.getLogger(__name__)
 
 GNN_GRAPH = "gnn_graph.pt"
-EDGE_FEATURES = ["class_rank", "length_m", "lanes", "maxspeed", "log_aadt", "motorway"]
 
 
 @dataclass
@@ -58,39 +55,6 @@ class GraphData:
 
     def year_index(self, year: int) -> int:
         return self.years.index(year)
-
-
-def build_edges(cfg: dict[str, Any]) -> tuple[np.ndarray, pd.DataFrame]:
-    """Undirected intersection pairs (a < b) with merged, unstandardised edge features."""
-    processed = Path(cfg["paths"]["processed_dir"])
-    columns = ["segment_id", "u", "v", "length", "highway", "lanes", "maxspeed"]
-    seg = pd.read_parquet(processed / SEGMENTS, columns=columns)
-    cluster = pd.read_parquet(processed / NODE_MAP).set_index("osmid")["intersection_id"]
-    aadt = pd.read_parquet(processed / AADT_EDGES, columns=["segment_id", "aadt_segment"])
-    aadt = aadt.groupby("segment_id")["aadt_segment"].max()
-    seg["a"], seg["b"] = seg["u"].map(cluster), seg["v"].map(cluster)
-    seg = seg[seg["a"].notna() & seg["b"].notna() & (seg["a"] != seg["b"])].copy()
-    lo, hi = np.minimum(seg["a"], seg["b"]), np.maximum(seg["a"], seg["b"])
-    seg["a"], seg["b"] = lo.astype(int), hi.astype(int)
-    seg["class_rank"] = class_rank(seg["highway"])
-    seg["length_m"] = seg["length"]
-    seg["lanes"] = seg["lanes"].map(first_number)
-    seg["maxspeed"] = seg["maxspeed"].map(first_number)
-    for col in ("lanes", "maxspeed"):  # impute by class, like the CP3 static features
-        seg[col] = seg[col].fillna(seg.groupby("highway")[col].transform("median"))
-        seg[col] = seg[col].fillna(seg[col].median())
-    seg["log_aadt"] = np.log1p(seg["segment_id"].map(aadt).fillna(0))
-    seg["motorway"] = seg["highway"].isin(["motorway", "motorway_link"]).astype(float)
-    merged = seg.groupby(["a", "b"]).agg(
-        class_rank=("class_rank", "max"),
-        length_m=("length_m", "min"),
-        lanes=("lanes", "max"),
-        maxspeed=("maxspeed", "max"),
-        log_aadt=("log_aadt", "max"),
-        motorway=("motorway", "max"),
-    )
-    pairs = np.array(merged.index.tolist()).T
-    return pairs, merged.reset_index(drop=True)
 
 
 def node_table(cfg: dict[str, Any], labels: pd.DataFrame | None = None) -> pd.DataFrame:
