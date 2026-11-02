@@ -128,6 +128,32 @@ overpredicted. Observed crashes per million entering vehicles are nearly flat ac
 
 ![Calibration by volume and predicted-risk decile](reports/figures/calibration_by_volume.png)
 
+### Graph neural network
+
+The road network as a graph: 22,435 intersections as nodes, 33,168 road links between them
+as edges (class, length, lanes, speed limit, traffic volume). Each node carries the same 50
+features as LightGBM + AADT. GraphSAGE and GATv2 are compared with an MLP on the same
+features (no graph) and with LightGBM given hand-built 1- and 2-hop neighbour features, on the
+same splits; GNN numbers average 5 seeds.
+
+| test 2025 (Spearman [95% CI]) | all intersections | no crashes in prior 3 years | road features only, unseen 2 km blocks |
+|---|---|---:|---|
+| LightGBM + AADT | 0.744 [0.737, 0.751] | 0.304 | 0.628 [0.619, 0.637] (road-only LightGBM) |
+| LightGBM + AADT + neighbour features | **0.746** [0.739, 0.752] | **0.312** | |
+| MLP (no graph) | 0.739 [0.732, 0.746] | 0.283 | 0.621 [0.612, 0.630] |
+| GraphSAGE | 0.742 [0.735, 0.749] | 0.297 | **0.629** [0.620, 0.639] |
+| GraphSAGE + LightGBM ensemble | 0.745 [0.739, 0.752] | 0.305 | |
+
+**Does the graph help?** Message passing beats the same network without it (GraphSAGE vs
+MLP: +0.003 Spearman with crash history, +0.009 on unseen blocks with road features only,
+both CIs above zero), but it does not beat gradient-boosted trees: GraphSAGE ties LightGBM +
+AADT, trails LightGBM with neighbour features, and the ensemble adds +0.001. Most of the
+signal is the intersection's own crash history, which every model already has. The GNNs also
+overpredict the 2025 level by about 10% and are worse calibrated per vehicle on test, so
+routing stays on recalibrated EB. Training runs on Apple-silicon GPU (MPS) at 0.31 s per epoch
+for GraphSAGE versus 0.61 s on CPU; the code picks CUDA, MPS or CPU automatically. Details:
+[`reports/gnn.md`](reports/gnn.md).
+
 ## Validation highlights
 
 - **No leakage.** History features and EB use only years before the label year; tests
@@ -194,14 +220,16 @@ commit: **[wandb: safepath](https://forge.coreweave.com/wandb/kimmer-university-
 
 ## Quickstart
 
-Requires Python 3.11+.
+Requires Python 3.11+. Stack: pandas, GeoPandas, OSMnx, NetworkX, LightGBM, statsmodels,
+scikit-learn, PyTorch and PyTorch Geometric (optional), Streamlit.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"            # add ",tracking" for Weights & Biases
+pip install -e ".[dev]"            # add ",tracking" for W&B, ",gnn" for PyTorch + PyG
 
 python -m safepath all             # download, build, model, score, route (~15 min, mostly downloads)
 python -m safepath app             # open the Streamlit app
+python -m safepath gnn             # optional: GNN grid, 5 seeds, spatial folds (~45 min on a laptop GPU)
 ```
 
 Steps also run on their own: `download`, `clean`, `report-data`, `graph`, `locations`,
@@ -234,8 +262,8 @@ parameters, e.g. `?origin=Union+Station&destination=Yorkdale&lam=2`.
 
 ## Roadmap
 
-- **Phase 3: generalisation.** A graph neural network on the road graph against LightGBM and
-  the SPF; a cross-city test on Ottawa collision data; a London, Ontario demo using the SPF
+- **Phase 3: generalisation.** Done: a graph neural network against LightGBM and the SPF.
+  Next: a cross-city test on Ottawa collision data; a London, Ontario demo using the SPF
   without local crash history.
 - **Phase 4: product.** A deployed demo, a model card, and time- and weather-aware risk.
 
@@ -252,6 +280,7 @@ src/safepath/risk.py        per-vehicle risk onto the routing graph
 src/safepath/movements.py   turn-aware routing graph (U-turn penalty)
 src/safepath/routing.py     λ routing, k calibration, evaluation, sensitivity
 src/safepath/explain.py     SHAP and per-intersection risk factors
+src/safepath/gnn/           intersection graph, MLP / GraphSAGE / GATv2, training
 src/safepath/tracking.py    optional Weights & Biases logging
 src/safepath/app/           Streamlit app
 reports/                    generated reports and figures
