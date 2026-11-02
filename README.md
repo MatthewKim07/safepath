@@ -141,17 +141,17 @@ same splits; GNN numbers average 5 seeds.
 | LightGBM + AADT | 0.744 [0.737, 0.751] | 0.304 | 0.628 [0.619, 0.637] (road-only LightGBM) |
 | LightGBM + AADT + neighbour features | **0.746** [0.739, 0.752] | **0.312** | |
 | MLP (no graph) | 0.739 [0.732, 0.746] | 0.283 | 0.621 [0.612, 0.630] |
-| GraphSAGE | 0.742 [0.735, 0.749] | 0.297 | **0.629** [0.620, 0.639] |
-| GraphSAGE + LightGBM ensemble | 0.745 [0.739, 0.752] | 0.305 | |
+| GraphSAGE | 0.743 [0.735, 0.749] | 0.297 | **0.629** [0.620, 0.639] |
+| GraphSAGE + LightGBM ensemble | 0.745 [0.739, 0.752] | 0.304 | |
 
 **Does the graph help?** Message passing beats the same network without it (GraphSAGE vs
-MLP: +0.003 Spearman with crash history, +0.009 on unseen blocks with road features only,
+MLP: +0.003 Spearman with crash history, +0.008 on unseen blocks with road features only,
 both CIs above zero), but it does not beat gradient-boosted trees: GraphSAGE ties LightGBM +
 AADT, trails LightGBM with neighbour features, and the ensemble adds +0.001. Most of the
 signal is the intersection's own crash history, which every model already has. The GNNs also
 overpredict the 2025 level by about 10% and are worse calibrated per vehicle on test, so
-routing stays on recalibrated EB. Training runs on Apple-silicon GPU (MPS) at 0.31 s per epoch
-for GraphSAGE versus 0.61 s on CPU; the code picks CUDA, MPS or CPU automatically. Details:
+routing stays on recalibrated EB. Training runs on Apple-silicon GPU (MPS) at 0.34 s per epoch
+for GraphSAGE versus 0.73 s on CPU; the code picks CUDA, MPS or CPU automatically. Details:
 [`reports/gnn.md`](reports/gnn.md).
 
 ## Validation highlights

@@ -265,6 +265,9 @@ def write_report(cfg: dict[str, Any], r: dict[str, Any], path: Path) -> None:
         return markdown_table(df.drop(columns=[c for c in df if c.startswith("_")]), floats)
 
     configs = pd.DataFrame([{"model": LABELS[f"gnn_{k}"], **c} for k, c in s["configs"].items()])
+    runs = [x for m in s["models"].values() for x in m["seeds"]]
+    n_runs, latest = len(runs), max(x["best_epoch"] for x in runs)
+    capped = sum(len(x["history"]) >= s.get("max_epochs", 150) for x in runs)
     lines = [
         "# Graph neural networks on the intersection graph (CP8)",
         "",
@@ -282,12 +285,21 @@ def write_report(cfg: dict[str, Any], r: dict[str, Any], path: Path) -> None:
         "## Training",
         "",
         "Poisson NLL on log expected crashes; full batch, one step per train-year snapshot per "
-        "epoch; early stopping on validation-2024 deviance (patience 15, at most 150 epochs). "
+        "epoch; early stopping on validation-2024 deviance (patience "
+        f"{s.get('patience', 15)}; at most {s.get('max_epochs', 150)} epochs for the final "
+        f"seeds and spatial folds, {s.get('grid_max_epochs', 150)} in the grid search). "
         f"Grid on validation only: hidden {{64, 128}} x layers {{2, 3}} x lr {{1e-3, 3e-3}} x "
         f"dropout {{0.1, 0.3}} per model. Device: {s['device']}. Final configs, 5 seeds each; "
         "a model's prediction is the mean of its 5 seeds' expected counts.",
         "",
         table(configs, "{:g}"),
+        "",
+        f"Final runs stopped by the epoch cap: {capped} of {n_runs} (latest best epoch "
+        f"{latest}). CP8 used a 150-epoch cap, which cut off one GraphSAGE seed (best epoch "
+        "140 of 150); with the cap at 400 (CP9) every run stops early, the 5-seed test "
+        "Spearman moves by at most 0.0001 and no conclusion changes. GATv2 seeds moved a "
+        "little without touching the old cap: MPS training is not bit-for-bit reproducible. "
+        "The grid search was not re-run; its configs come from the 150-epoch grid.",
         "",
         "Seed variance:",
         "",

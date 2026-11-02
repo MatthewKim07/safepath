@@ -54,7 +54,7 @@ GNN_SPATIAL_OOF = "gnn_spatial_oof.parquet"
 GNN_SUMMARY = "gnn_summary.json"
 GRID = {"hidden": [64, 128], "layers": [2, 3], "lr": [1e-3, 3e-3], "dropout": [0.1, 0.3]}
 SEEDS = [0, 1, 2, 3, 4]
-MAX_EPOCHS = 150
+MAX_EPOCHS = 400  # CP8 used 150; raised in CP9 so early stopping, not the cap, ends runs
 PATIENCE = 15
 DEVIANCE_FLOOR = 0.05  # crashes/year, as in evaluate.py
 WEIGHT_DECAY = 1e-5
@@ -94,7 +94,7 @@ def train_model(
     train_mask = (g.clean if train_nodes is None else train_nodes & g.clean).to(device)
     stop_mask = (g.clean if stop_nodes is None else stop_nodes & g.clean).to(device)
     train_years = g.split["train"]
-    rate = float(ys[train_years][:, train_mask].mean())
+    rate = ys[train_years][:, train_mask].mean().item()
     model = NodeModel(kind, xs.shape[2], config["hidden"], config["layers"], config["dropout"],
                       edge_dim=ea.shape[1], init_rate=rate).to(device)  # fmt: skip
     opt = torch.optim.Adam(model.parameters(), lr=config["lr"], weight_decay=WEIGHT_DECAY)
@@ -111,7 +111,7 @@ def train_model(
             loss = F.poisson_nll_loss(out[train_mask], ys[t][train_mask], log_input=True)
             loss.backward()
             opt.step()
-            losses.append(float(loss))
+            losses.append(loss.item())
         model.eval()
         with torch.no_grad():
             dev = deviance(ys[val][stop_mask], model(xs[val], ei, ea)[stop_mask])
@@ -281,15 +281,26 @@ def plot_curves(summary: dict[str, Any], path: Path) -> None:
     plt.close(fig)
 
 
-def run(cfg: dict[str, Any], device_name: str | None = None) -> dict[str, Any]:
+def run(
+    cfg: dict[str, Any], device_name: str | None = None, reuse_configs: bool = False
+) -> dict[str, Any]:
     processed = Path(cfg["paths"]["processed_dir"])
     device = pick_device(device_name)
     g = load_graph(cfg)
+    models_dir = Path(cfg["paths"]["models_dir"])
     t0 = time.time()
-    grid = grid_search(g, device, cfg)
-    configs = best_configs(grid)
-    with tracking.run(cfg, "gnn-grid", "gnn", {"grid": GRID, "device": str(device)}) as wb:
-        wb.table("grid", grid)
+    if reuse_configs:
+        # Keep the earlier grid and its chosen configs; refit only the finals and folds.
+        previous = json.loads((models_dir / GNN_SUMMARY).read_text())
+        grid, configs = pd.DataFrame(previous["grid"]), previous["configs"]
+        grid_max_epochs = previous.get("grid_max_epochs", 150)
+        log.info("reusing grid configs from %s: %s", GNN_SUMMARY, configs)
+    else:
+        grid = grid_search(g, device, cfg)
+        configs = best_configs(grid)
+        grid_max_epochs = MAX_EPOCHS
+        with tracking.run(cfg, "gnn-grid", "gnn", {"grid": GRID, "device": str(device)}) as wb:
+            wb.table("grid", grid)
     preds, summary = final_models(g, device, configs, cfg)
     preds.to_parquet(processed / GNN_PREDICTIONS, index=False)
     oof = spatial_holdout(g, device, configs, cfg)
@@ -303,6 +314,9 @@ def run(cfg: dict[str, Any], device_name: str | None = None) -> dict[str, Any]:
         "mps_fallback": os.environ.get("PYTORCH_ENABLE_MPS_FALLBACK"),
         "torch": torch.__version__,
         "grid": grid.to_dict(orient="records"),
+        "grid_max_epochs": grid_max_epochs,
+        "max_epochs": MAX_EPOCHS,
+        "patience": PATIENCE,
         "configs": configs,
         "models": summary,
         "timing": times,
@@ -315,7 +329,6 @@ def run(cfg: dict[str, Any], device_name: str | None = None) -> dict[str, Any]:
             "years": g.years,
         },  # fmt: skip
     }
-    models_dir = Path(cfg["paths"]["models_dir"])
     models_dir.mkdir(parents=True, exist_ok=True)
     (models_dir / GNN_SUMMARY).write_text(json.dumps(out, indent=2, default=float))
     log.info("GNN training done in %.0fs on %s", out["total_seconds"], device)
@@ -327,8 +340,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="safepath.gnn.train")
     parser.add_argument("--config", default=None)
     parser.add_argument("--device", default=None, help="cuda, mps or cpu (default: auto)")
+    parser.add_argument(
+        "--reuse-configs",
+        action="store_true",
+        help="skip the grid; refit finals and folds with the saved configs",
+    )
     args = parser.parse_args(argv)
-    run(load_config(args.config), args.device)
+    run(load_config(args.config), args.device, args.reuse_configs)
     return 0
 
 
