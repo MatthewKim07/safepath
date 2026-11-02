@@ -54,3 +54,8 @@ def ottawa_config(cfg: dict[str, Any] | None = None) -> dict[str, Any]:
     if cfg is not None and cfg.get("city") == "ottawa":
         return cfg
     return load_config(OTTAWA_CONFIG)
+
+
+def toronto_config(cfg: dict[str, Any]) -> dict[str, Any]:
+    """The Toronto (training-city) config: `cfg` unless it is Ottawa's."""
+    return load_config() if cfg.get("city") == "ottawa" else cfg

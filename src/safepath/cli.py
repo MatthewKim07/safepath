@@ -10,7 +10,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from safepath.config import load_config, ottawa_config
+from safepath.config import load_config, ottawa_config, toronto_config
 from safepath.data.clean import run_clean
 from safepath.data.download import download_collisions
 from safepath.data.mto import run_mto
@@ -29,6 +29,7 @@ from safepath.models.spf import run_spf
 from safepath.models.train import run_train
 from safepath.models.volume_report import run_volume_model
 from safepath.ottawa.build import run_ottawa_build
+from safepath.ottawa.volumes import run_ottawa_volumes
 from safepath.risk import run_score
 from safepath.routing import run_routing
 from safepath.snap_report import run_snap_report
@@ -97,8 +98,12 @@ STEPS: dict[str, tuple[str, Callable[[dict], None]]] = {
         "Ottawa: graph, location check, snapping, labels and features (Toronto code paths)",
         lambda cfg: run_ottawa_build(ottawa_config(cfg)),
     ),
+    "ottawa-volumes": (
+        "Ottawa: Toronto's AADT model vs Ottawa counts; Ottawa AADT for the crash models",
+        lambda cfg: run_ottawa_volumes(ottawa_config(cfg), toronto_config(cfg)),
+    ),
 }
-OTTAWA_PIPELINE = ["ottawa-data", "ottawa-build"]
+OTTAWA_PIPELINE = ["ottawa-data", "ottawa-build", "ottawa-volumes"]
 PIPELINE = [
     "download",
     "clean",
